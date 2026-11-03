@@ -1,0 +1,11 @@
+{
+  "name": "minimaj",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal peer-to-peer 4-player riichi mahjong in the browser",
+  "scripts": {
+    "test": "node test/run.js",
+    "start": "python3 -m http.server 8080"
+  }
+}
