@@ -24,7 +24,7 @@ Pushing a `v*` tag also attaches them to a GitHub release.
 | Platform | File | First launch |
 | --- | --- | --- |
 | Windows | `minimaj-windows-amd64.zip` → `minimaj.exe` | SmartScreen: *More info → Run anyway*. Allow *Private networks* in the firewall prompt. |
-| macOS | `minimaj-macos.dmg` (universal) | Not notarized: right-click the app → *Open*. Allow incoming connections. |
+| macOS | `minimaj-macos.zip` → `minimaj.app` (universal) | Not notarized: right-click the app → *Open*. Allow incoming connections. |
 | Android | `minimaj-android-arm64.apk` | Allow installing from your browser or file manager. Allow notifications so the table keeps running. |
 | Linux | `minimaj-linux-amd64.tar.gz` / `arm64` | Run `./minimaj`. |
 
@@ -107,7 +107,7 @@ python3 -m http.server     # static/online version at http://localhost:8000
 ```
 
 Open `http://localhost:8000/?fake` to play a local game against bots without any
-networking. It is useful for UI work.
+networking. It is useful for UI work. `scripts/package-macos.sh` builds the macOS `.app` from the two darwin binaries (works on Linux).
 
 Cross-compile (no cgo):
 
