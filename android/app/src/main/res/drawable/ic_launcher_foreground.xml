@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A pastel mahjong tile (a "two of circles") centred in the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- tile shadow -->
+    <path
+        android:fillColor="#9D86D9"
+        android:pathData="M41,33h30a6,6 0 0 1 6,6v36a6,6 0 0 1 -6,6h-30a6,6 0 0 1 -6,-6v-36a6,6 0 0 1 6,-6z" />
+    <!-- tile face -->
+    <path
+        android:fillColor="#FDF6EE"
+        android:pathData="M38,29h30a6,6 0 0 1 6,6v36a6,6 0 0 1 -6,6h-30a6,6 0 0 1 -6,-6v-36a6,6 0 0 1 6,-6z" />
+    <!-- two circles -->
+    <path
+        android:fillColor="#FFB3C7"
+        android:pathData="M53,42m-8,0a8,8 0 1 0 16,0a8,8 0 1 0 -16,0" />
+    <path
+        android:fillColor="#3A6FBF"
+        android:pathData="M53,42m-3.5,0a3.5,3.5 0 1 0 7,0a3.5,3.5 0 1 0 -7,0" />
+    <path
+        android:fillColor="#8FE0B8"
+        android:pathData="M53,64m-8,0a8,8 0 1 0 16,0a8,8 0 1 0 -16,0" />
+    <path
+        android:fillColor="#26845B"
+        android:pathData="M53,64m-3.5,0a3.5,3.5 0 1 0 7,0a3.5,3.5 0 1 0 -7,0" />
+</vector>

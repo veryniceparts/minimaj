@@ -500,9 +500,27 @@ export class Game {
     this.scheduleBots();
   }
 
+  // Stop all bot timers for good (the room drops this game).
+  stop() {
+    this.stopped = true;
+    this.version++;
+    this.onChange = () => {};
+    if (this.botTimer != null) clearTimeout(this.botTimer);
+    this.botTimer = null;
+  }
+
   scheduleBots() {
     const v = this.version;
-    const later = (fn, ms) => setTimeout(() => { if (this.version === v) fn(); }, ms);
+    if (this.botTimer != null) {
+      if (this.botTimerV === v && !this.stopped) return; // already scheduled for this state
+      clearTimeout(this.botTimer); // stale: the state changed since
+      this.botTimer = null;
+    }
+    if (this.stopped) return;
+    const later = (fn, ms) => {
+      this.botTimerV = v;
+      this.botTimer = setTimeout(() => { this.botTimer = null; if (this.version === v) fn(); }, ms);
+    };
     if (this.phase === 'discard' && this.isBot(this.turn)) {
       const s = this.turn;
       later(() => this.act(s, botTurn(this, s)), this.botDelay);

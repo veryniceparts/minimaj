@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
-import { evaluateWin, shanten, waitsOf } from '../js/hand.js';
+import {
+  evaluateWin, shanten, shantenStd, shantenChiitoi, shantenKokushi, waitsOf, forEachImprovingTile,
+} from '../js/hand.js';
 import { countsOfTypes } from '../js/tiles.js';
 import { Game } from '../js/game.js';
+import { shantenStdRef } from './shanten-ref.js';
+import { installFakeClock } from './fakeclock.js';
+import { runRoomTests } from './room.test.js';
+import { runQrTests } from './qr.test.js';
+import { runNetTests } from './net.test.js';
 
 // helpers: parse "123m456p789s11z" style (z: 1-7 = E S W N Wh G R) into tile ids
 function parse(str) {
@@ -79,26 +86,87 @@ t('mangan', () => {
   assert.ok(r.han >= 5, JSON.stringify(r.yaku));
 });
 
-// full bot games
-const runGame = (seed, length) => new Promise((resolve, reject) => {
+t('optimized shanten matches the reference implementation', () => {
+  let tenpaiSeen = 0;
+  let x = 987654321;
+  const rng = () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const add = (c, tt, k) => { if (c[tt] + k > 4) return false; c[tt] += k; return true; };
+  for (let n = 0; n < 8000; n++) {
+    const c = new Array(34).fill(0);
+    const open = Math.floor(rng() * 5);
+    let size = 14 - 3 * open - (rng() < 0.5 ? 1 : 0);
+    const lim = rng() < 0.3 ? 9 : rng() < 0.5 ? 27 : 34; // bias towards one suit / no honors
+    if (n % 2) {
+      // near-complete hands: random sets + pair, then drop one or two tiles
+      size = 14 - 3 * open;
+      let k = 0;
+      while (k < size - 2) {
+        const tt = Math.floor(rng() * lim);
+        if (rng() < 0.5 && tt < 27 && tt % 9 <= 6) {
+          if (c[tt] < 4 && c[tt + 1] < 4 && c[tt + 2] < 4) { c[tt]++; c[tt + 1]++; c[tt + 2]++; k += 3; }
+        } else if (add(c, tt, 3)) k += 3;
+      }
+      while (!add(c, Math.floor(rng() * lim), 2));
+      for (let d = rng() < 0.6 ? 1 : 2; d > 0;) {
+        const tt = Math.floor(rng() * 34);
+        if (c[tt]) { c[tt]--; d--; size--; }
+      }
+    } else {
+      for (let k = 0; k < size;) { const tt = Math.floor(rng() * lim); if (c[tt] < 4) { c[tt]++; k++; } }
+    }
+    assert.equal(shantenStd(c, open), shantenStdRef(c, open), c.join('') + ' open ' + open);
+    if (n % 3) continue;
+    // waits and improving tiles against brute force with the reference shanten
+    const ref = (cc) => Math.min(shantenStdRef(cc, open), open ? 99 : Math.min(shantenChiitoi(cc), shantenKokushi(cc)));
+    const sh0 = ref(c);
+    assert.equal(shanten(c, open), sh0);
+    const brute = [], wait = [];
+    for (let u = 0; u < 34; u++) {
+      if (c[u] >= 4) continue;
+      c[u]++; const s1 = ref(c); c[u]--;
+      if (s1 < sh0) brute.push(u);
+      if (s1 === -1) wait.push(u);
+    }
+    const got = [];
+    forEachImprovingTile(c, open, sh0, (u) => got.push(u));
+    assert.deepEqual(got, brute, 'improving ' + c.join(''));
+    if (size % 3 === 1) { assert.deepEqual(waitsOf(c, open), wait, 'waits ' + c.join('')); if (wait.length) tenpaiSeen++; }
+  }
+  console.log('  shanten cross-check: tenpai hands', tenpaiSeen);
+  assert.ok(tenpaiSeen > 200, 'tenpai hands tested: ' + tenpaiSeen);
+});
+
+n += runQrTests();
+n += runRoomTests();
+n += await runNetTests();
+
+// full bot games (on a fake clock: same results as real timers, no idle time)
+const clock = installFakeClock();
+const runGame = (seed, length) => {
   let s = seed;
   const rng = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
+  let done = null;
   const g = new Game([0, 1, 2, 3].map((i) => ({ name: 'B' + i, kind: 'bot' })), { length, botDelay: 0, rng,
     onChange: (gg) => {
       for (let i = 0; i < 4; i++) JSON.stringify(gg.view(i));
       const total = gg.players.reduce((a, p) => a + p.score, 0) + gg.sticks * 1000;
-      if (total !== 100000) reject(new Error('score sum ' + total));
-      if (gg.phase === 'over') resolve(gg);
+      if (total !== 100000) throw new Error('score sum ' + total);
+      if (gg.phase === 'over') done = gg;
     } });
   g.start();
-});
+  clock.runAll(() => done);
+  assert.ok(done, 'game finished');
+  return done;
+};
 
 const t0 = Date.now();
 const stats = { ron: 0, tsumo: 0, draw: 0, rounds: 0 };
-const yakuCount = {};
 for (let i = 1; i <= 30; i++) {
-  const g = await runGame(i * 7919, 2);
+  const g = runGame(i * 7919, 2);
   for (const r of g.log) { stats[r.type]++; stats.rounds++; }
 }
+clock.uninstall();
 console.log('bot games ok', stats, (Date.now() - t0) + 'ms');
+// baseline from the original implementation (same seeds)
+assert.deepEqual(stats, { ron: 197, tsumo: 96, draw: 24, rounds: 317 });
 console.log(n, 'unit tests passed');

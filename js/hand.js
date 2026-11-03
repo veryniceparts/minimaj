@@ -8,90 +8,128 @@ import {
 /* Shanten                                                             */
 /* ------------------------------------------------------------------ */
 
-// For one suit (9 counts) enumerate reachable [mentsu, taatsu, pair] tuples.
-const suitCache = new Map();
+// Standard-form shanten.
+//
+// Each suit (9 counts, base-5 key) is summarised once: for pair p (0/1) and
+// mentsu m (0..4), the most taatsu (capped at 4) any split of the suit reaches
+// with that pair flag and at least m mentsu (-1 = impossible). The ten values
+// sit in a growing Int8Array pool; a flat Int32Array indexed by the suit key
+// holds pool offset + 1 (0 = not computed yet). shantenStd then combines three
+// summaries with a small max-plus convolution: no Maps, no allocations.
+// Exactly the same results as enumerating every split of the whole hand.
+const SUIT_KEYS = 1953125; // 5^9
+const suitIndex = new Int32Array(SUIT_KEYS);
+let pool = new Int8Array(10 * 4096);
+let poolUsed = 0;
+const ENUM = new Int8Array(9);
+const BEST = new Int8Array(10);
 
-function dominates(b, a) {
-  return b[0] >= a[0] && b[1] >= a[1] && b[2] >= a[2];
-}
-function prune(list) {
-  const out = [];
-  for (let i = 0; i < list.length; i++) {
-    let dom = false;
-    for (let j = 0; j < list.length && !dom; j++) {
-      if (i !== j && dominates(list[j], list[i]) &&
-          (list[j][0] !== list[i][0] || list[j][1] !== list[i][1] || list[j][2] !== list[i][2] || j < i)) dom = true;
-    }
-    if (!dom) out.push(list[i]);
+function enumSuit(i, m, t, p) {
+  const a = ENUM;
+  while (i < 9 && a[i] === 0) i++;
+  if (i === 9) {
+    if (m > 4) m = 4;
+    if (t > 4) t = 4;
+    for (let k = p * 5, e = k + m; k <= e; k++) if (BEST[k] < t) BEST[k] = t;
+    return;
   }
-  return out;
-}
-
-function suitOptions(c, off) {
-  let key = 0;
-  for (let i = 0; i < 9; i++) key = key * 5 + c[off + i];
-  let r = suitCache.get(key);
-  if (r) return r;
-  const a = c.slice(off, off + 9);
-  const found = new Map();
-  const rec = (i, m, t, p) => {
-    while (i < 9 && a[i] === 0) i++;
-    if (i === 9) {
-      const k = m * 100 + t * 10 + p;
-      if (!found.has(k)) found.set(k, [m, t, p]);
-      return;
-    }
-    if (a[i] >= 3) { a[i] -= 3; rec(i, m + 1, t, p); a[i] += 3; }
-    if (i <= 6 && a[i + 1] && a[i + 2]) {
-      a[i]--; a[i + 1]--; a[i + 2]--; rec(i, m + 1, t, p); a[i]++; a[i + 1]++; a[i + 2]++;
-    }
-    if (a[i] >= 2) {
-      a[i] -= 2;
-      if (p === 0) rec(i, m, t, 1);
-      rec(i, m, t + 1, p);
-      a[i] += 2;
-    }
-    if (i <= 7 && a[i + 1]) { a[i]--; a[i + 1]--; rec(i, m, t + 1, p); a[i]++; a[i + 1]++; }
-    if (i <= 6 && a[i + 2]) { a[i]--; a[i + 2]--; rec(i, m, t + 1, p); a[i]++; a[i + 2]++; }
-    a[i]--; rec(i, m, t, p); a[i]++;
-  };
-  rec(0, 0, 0, 0);
-  r = prune([...found.values()]);
-  suitCache.set(key, r);
-  return r;
-}
-
-const H3 = [[1, 0, 0]];
-const H2 = [[0, 1, 0], [0, 0, 1]];
-
-export function shantenStd(c, open) {
-  const groups = [suitOptions(c, 0), suitOptions(c, 9), suitOptions(c, 18)];
-  for (let h = 27; h < 34; h++) {
-    if (c[h] >= 3) groups.push(H3);
-    else if (c[h] === 2) groups.push(H2);
+  if (a[i] >= 3) { a[i] -= 3; enumSuit(i, m + 1, t, p); a[i] += 3; }
+  if (i <= 6 && a[i + 1] && a[i + 2]) {
+    a[i]--; a[i + 1]--; a[i + 2]--; enumSuit(i, m + 1, t, p); a[i]++; a[i + 1]++; a[i + 2]++;
   }
-  let cur = [[0, 0, 0]];
-  for (const g of groups) {
-    const m = new Map();
-    for (const a of cur) {
-      for (const b of g) {
-        const p = a[2] + b[2];
-        if (p > 1) continue;
-        const x = [a[0] + b[0], a[1] + b[1], p];
-        m.set(x[0] * 1000 + x[1] * 10 + x[2], x);
-      }
+  if (a[i] >= 2) {
+    a[i] -= 2;
+    if (p === 0) enumSuit(i, m, t, 1);
+    enumSuit(i, m, t + 1, p);
+    a[i] += 2;
+  }
+  if (i <= 7 && a[i + 1]) { a[i]--; a[i + 1]--; enumSuit(i, m, t + 1, p); a[i]++; a[i + 1]++; }
+  if (i <= 6 && a[i + 2]) { a[i]--; a[i + 2]--; enumSuit(i, m, t + 1, p); a[i]++; a[i + 2]++; }
+  a[i]--; enumSuit(i, m, t, p); a[i]++;
+}
+
+// pool offset of the summary of suit c[o..o+8]
+function suitOff(c, o) {
+  const key = c[o] * 390625 + c[o + 1] * 78125 + c[o + 2] * 15625 + c[o + 3] * 3125 + c[o + 4] * 625 +
+    c[o + 5] * 125 + c[o + 6] * 25 + c[o + 7] * 5 + c[o + 8];
+  const r = suitIndex[key];
+  if (r !== 0) return r - 1;
+  for (let i = 0; i < 9; i++) ENUM[i] = c[o + i];
+  BEST.fill(-1);
+  enumSuit(0, 0, 0, 0);
+  if (poolUsed + 10 > pool.length) {
+    const np = new Int8Array(pool.length * 2);
+    np.set(pool);
+    pool = np;
+  }
+  const off = poolUsed;
+  pool.set(BEST, off);
+  poolUsed += 10;
+  suitIndex[key] = off + 1;
+  return off;
+}
+
+// Combine three suit summaries (pool offsets) with h3 honor triplets and h2
+// honor pairs. Values are non-increasing in m, and p=1 possible implies p=0
+// possible, so each loop stops at the first impossible p=0 entry.
+const AB = new Int8Array(10);
+function stdCore(oa, ob, oc, h3, h2, open) {
+  const P = pool;
+  for (let k = 0; k < 10; k++) AB[k] = -1;
+  for (let ma = 0; ma < 5; ma++) {
+    const a0 = P[oa + ma];
+    if (a0 < 0) break;
+    const a1 = P[oa + 5 + ma];
+    for (let mb = 0; ma + mb < 5; mb++) {
+      const b0 = P[ob + mb];
+      if (b0 < 0) break;
+      const b1 = P[ob + 5 + mb];
+      const k = ma + mb;
+      if (a0 + b0 > AB[k]) AB[k] = a0 + b0;
+      if (a1 >= 0 && a1 + b0 > AB[5 + k]) AB[5 + k] = a1 + b0;
+      if (b1 >= 0 && a0 + b1 > AB[5 + k]) AB[5 + k] = a0 + b1;
     }
-    cur = prune([...m.values()]);
   }
   const need = 4 - open;
   let best = 8;
-  for (const [m0, t0, p] of cur) {
-    const m = Math.min(m0, need);
-    const t = Math.min(t0, need - m);
-    const s = 8 - 2 * (m + open) - t - p;
-    if (s < best) best = s;
+  for (let ma = 0; ma < 5; ma++) {
+    const a0 = AB[ma];
+    if (a0 < 0) break;
+    const a1 = AB[5 + ma];
+    for (let mb = 0; ma + mb < 5; mb++) {
+      const b0 = P[oc + mb];
+      if (b0 < 0) break;
+      const b1 = P[oc + 5 + mb];
+      let m = ma + mb + h3;
+      if (m > need) m = need;
+      const room = need - m;
+      // no pair from the suits (an honor pair, if any, is the pair: never worse)
+      let t = a0 + b0 + h2, p = 0;
+      if (h2 > 0) { t--; p = 1; }
+      let s = 8 - 2 * (m + open) - (t < room ? t : room) - p;
+      if (s < best) best = s;
+      // the pair from one of the suits
+      t = a1 >= 0 ? a1 + b0 : -1;
+      if (b1 >= 0 && a0 + b1 > t) t = a0 + b1;
+      if (t >= 0) {
+        t += h2;
+        s = 7 - 2 * (m + open) - (t < room ? t : room);
+        if (s < best) best = s;
+      }
+    }
   }
   return best;
+}
+
+export function shantenStd(c, open) {
+  const oa = suitOff(c, 0), ob = suitOff(c, 9), oc = suitOff(c, 18);
+  let h3 = 0, h2 = 0;
+  for (let h = 27; h < 34; h++) {
+    const n = c[h];
+    if (n >= 3) h3++;
+    else if (n === 2) h2++;
+  }
+  return stdCore(oa, ob, oc, h3, h2, open);
 }
 
 export function shantenChiitoi(c) {
@@ -104,6 +142,9 @@ export function shantenChiitoi(c) {
 }
 
 const YAOCHU = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33];
+const IS_YAOCHU = new Int8Array(34);
+for (const t of YAOCHU) IS_YAOCHU[t] = 1;
+
 export function shantenKokushi(c) {
   let kinds = 0, pair = 0;
   for (const t of YAOCHU) {
@@ -122,16 +163,78 @@ export function shanten(c, open = 0) {
 
 export const isAgariCounts = (c, open) => shanten(c, open) === -1;
 
+// True when tile type u is absent and has no same-suit neighbour within 2:
+// adding it cannot change the standard-form shanten.
+function isolatedType(c, u) {
+  if (c[u]) return false;
+  if (u >= 27) return true;
+  const n = u % 9;
+  return !((n >= 2 && c[u - 2]) || (n >= 1 && c[u - 1]) || (n <= 7 && c[u + 1]) || (n <= 6 && c[u + 2]));
+}
+
+// shanten(c + u, open) for every tile type u with c[u] < 4, written to out[u]
+// (out[u] = 99 when c[u] = 4). Only the suit that changes is re-summarised and
+// the chiitoitsu / kokushi counts are updated incrementally.
+const ADD_OUT = new Int8Array(34);
+function shantenAfterEachAdd(c, open, out) {
+  const offs = [suitOff(c, 0), suitOff(c, 9), suitOff(c, 18)];
+  let h3 = 0, h2 = 0;
+  for (let h = 27; h < 34; h++) {
+    if (c[h] >= 3) h3++;
+    else if (c[h] === 2) h2++;
+  }
+  const std = stdCore(offs[0], offs[1], offs[2], h3, h2, open);
+  let pairs = 0, kinds = 0, yk = 0, yp = 0;
+  if (open === 0) {
+    for (let i = 0; i < 34; i++) {
+      if (c[i] >= 1) { kinds++; if (IS_YAOCHU[i]) yk++; }
+      if (c[i] >= 2) { pairs++; if (IS_YAOCHU[i]) yp = 1; }
+    }
+  }
+  for (let u = 0; u < 34; u++) {
+    const n = c[u];
+    if (n >= 4) { out[u] = 99; continue; }
+    let s;
+    if (isolatedType(c, u)) s = std;
+    else if (u >= 27) {
+      // honors: 1 -> 2 adds a pair, 2 -> 3 turns a pair into a triplet, 3 -> 4 changes nothing
+      s = n === 1 ? stdCore(offs[0], offs[1], offs[2], h3, h2 + 1, open)
+        : n === 2 ? stdCore(offs[0], offs[1], offs[2], h3 + 1, h2 - 1, open) : std;
+    } else {
+      const k = (u / 9) | 0;
+      c[u]++;
+      const o = suitOff(c, 9 * k);
+      c[u]--;
+      s = k === 0 ? stdCore(o, offs[1], offs[2], h3, h2, open)
+        : k === 1 ? stdCore(offs[0], o, offs[2], h3, h2, open) : stdCore(offs[0], offs[1], o, h3, h2, open);
+    }
+    if (open === 0) {
+      const k2 = kinds + (n === 0 ? 1 : 0);
+      const chi = 6 - pairs - (n === 1 ? 1 : 0) + (k2 < 7 ? 7 - k2 : 0);
+      const kok = 13 - yk - (n === 0 ? IS_YAOCHU[u] : 0) - (yp || (n === 1 && IS_YAOCHU[u]) ? 1 : 0);
+      if (chi < s) s = chi;
+      if (kok < s) s = kok;
+    }
+    out[u] = s;
+  }
+}
+
+// Calls fn(u) for every tile type u whose addition lowers shanten(c, open)
+// below sh (normally sh = shanten(c, open)), in increasing u. fn must not
+// call forEachImprovingTile / waitsOf itself (they share a scratch buffer).
+export function forEachImprovingTile(c, open, sh, fn) {
+  const out = ADD_OUT;
+  shantenAfterEachAdd(c, open, out);
+  for (let u = 0; u < 34; u++) if (out[u] < sh) fn(u);
+}
+
 // Tile types that complete a 13-tile (3n+1) concealed hand.
 export function waitsOf(c, open) {
-  const out = [];
-  for (let t = 0; t < 34; t++) {
-    if (c[t] >= 4) continue;
-    c[t]++;
-    if (shanten(c, open) === -1) out.push(t);
-    c[t]--;
-  }
-  return out;
+  const out = ADD_OUT;
+  shantenAfterEachAdd(c, open, out);
+  const res = [];
+  for (let u = 0; u < 34; u++) if (out[u] === -1) res.push(u);
+  return res;
 }
 
 /* ------------------------------------------------------------------ */

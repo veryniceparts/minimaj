@@ -1,6 +1,6 @@
 // Simple computer player: shanten/ukeire efficiency with basic defense.
 import { tileType, isYaochu, isHonor, doraFromIndicator, countsOf, isRed } from './tiles.js';
-import { shanten } from './hand.js';
+import { shanten, forEachImprovingTile } from './hand.js';
 
 function visibleCounts(g, seat) {
   const v = new Array(34).fill(0);
@@ -69,12 +69,7 @@ export function chooseDiscard(g, seat, allowed) {
     e.uke = 0;
     if (e.sh > minSh + 1) continue;
     c[e.t]--;
-    for (let u = 0; u < 34; u++) {
-      if (c[u] >= 4) continue;
-      c[u]++;
-      if (shanten(c, open) < e.sh) e.uke += Math.max(0, 4 - vis[u]);
-      c[u]--;
-    }
+    forEachImprovingTile(c, open, e.sh, (u) => { e.uke += Math.max(0, 4 - vis[u]); });
     c[e.t]++;
     e.val = tileValue(e.t, g, seat);
   }
