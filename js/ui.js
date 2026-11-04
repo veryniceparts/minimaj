@@ -142,13 +142,16 @@ export function resultKey(v) {
   return `${v.round}:${v.kyoku}:${v.honba}:${r.type}:${r.winner}:${v.ready.join(',')}`;
 }
 
+// closes the card to look at the table with every hand revealed (handled in Table, not main.js)
+const PEEK_BTN = '<button class="act ghost peekbtn" data-ui="close" title="Close and look at the table (Esc)">View table</button>';
+
 export function resultHTML(v) {
   const r = v.result;
   if (v.phase === 'over') {
     const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td>${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
     return `<div class="res over"><h2 class="big">Game over</h2><table class="scores final">${rows}</table>
       <div class="btns">${v.isHost ? '<button class="act hot wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>' : '<p class="muted wait">Waiting for the host…</p>'}
-      <button class="act ghost wide" data-act='{"type":"ui-leave"}'>Leave</button></div></div>`;
+      ${PEEK_BTN.replace('class="act ghost', 'class="act ghost wide')}<button class="act ghost wide" data-act='{"type":"ui-leave"}'>Leave</button></div></div>`;
   }
   // .res is a grid on short landscape screens: hand + yaku left, scores + button right (see style.css)
   let body;
@@ -169,9 +172,27 @@ export function resultHTML(v) {
   const readyNames = v.ready.map((s) => esc(v.players[s].name));
   const iAmReady = v.ready.includes(v.seat);
   return `<div class="res ${r.type === 'draw' ? 'draw' : 'win'}">${body}${deltasTable(v, r)}
-    ${iAmReady ? `<p class="muted wait">Waiting for others…${readyNames.length ? ' (ready: ' + readyNames.join(', ') + ')' : ''}</p>`
-    : `<button class="act hot wide go" data-act='{"type":"ready"}'>${r.gameOver ? 'See results' : 'Next hand'}</button>`}</div>`;
+    <div class="gorow">${PEEK_BTN}${iAmReady ? `<p class="muted wait">Waiting for others…${readyNames.length ? ' (ready: ' + readyNames.join(', ') + ')' : ''}</p>`
+    : `<button class="act hot wide go" data-act='{"type":"ready"}'>${r.gameOver ? 'See results' : 'Next hand'}</button>`}</div></div>`;
 }
+
+// While the result card is closed to look at the table: reopen it, or say ready from here.
+export function peekActions(v) {
+  const over = v.phase === 'over';
+  const iAmReady = v.ready.includes(v.seat);
+  const out = [`<button class="act ghost reopen" data-ui="open">${over ? 'Standings' : 'Show results'}</button>`];
+  if (!over && !iAmReady) out.push(`<button class="act hot" data-act='{"type":"ready"}'>${v.result.gameOver ? 'See results' : 'Next hand'}</button>`);
+  const hint = over ? 'Game over · final table' : iAmReady ? 'Waiting for others…' : 'Hand over · all hands shown';
+  return { html: out.join(''), hint };
+}
+
+let current = null; // the live Table, for Escape
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !current || !current.root.isConnected) return;
+  const menu = document.getElementById('menu');
+  if (menu && !menu.hidden) return; // main.js closes the menu first
+  if (current.resKey && !current.peek) current.setPeek(true);
+});
 
 /* ---------------- keyed table ---------------- */
 
@@ -212,6 +233,14 @@ export class Table {
       hand: q('#hand .tiles'), drawn: q('#hand .drawn'), mymelds: q('#hand .mymelds'),
       modal: q('#modal'), modalcard: q('#modalcard'),
     };
+    this.peek = false; // result card closed to look at the revealed table
+    current = this;
+    root.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-ui]');
+      if (b && b.dataset.ui === 'close') this.setPeek(true);
+      else if (b && b.dataset.ui === 'open') this.setPeek(false);
+      else if (e.target === this.el.modal && this.resKey) this.setPeek(true); // tap on the backdrop
+    });
     this.layers = [0, 1, 2, 3].map((r) => {
       const L = q(`.layer.r${r}`);
       const o = {
@@ -223,6 +252,19 @@ export class Table {
       return o;
     });
     this.el.hand._ang = this.el.drawn._ang = this.el.mymelds._ang = 0;
+  }
+
+  setPeek(on) {
+    if (!this.v || this.peek === on) return;
+    this.peek = on;
+    this.update(this.v, this.ui);
+    if (!on) {
+      this.el.modal.classList.remove('in');
+      void this.el.modal.offsetWidth;
+      this.el.modal.classList.add('in');
+      const go = this.el.modalcard.querySelector('.go');
+      if (go) go.focus({ preventScroll: true });
+    }
   }
 
   node(key, id) {
@@ -262,6 +304,8 @@ export class Table {
 
   update(v, ui) {
     const me = v.seat;
+    this.v = v;
+    this.ui = ui;
     const dealKey = `${v.round}:${v.kyoku}:${v.honba}:${v.dora.length ? v.dora[0] : ''}`;
     const animate = this.dealKey === dealKey && !reduceMotion.matches && !document.hidden && typeof Element.prototype.animate === 'function';
     this.dealKey = dealKey;
@@ -323,11 +367,19 @@ export class Table {
 
       if (r !== 0) {
         const backs = [];
-        const drew = v.phase === 'discard' && v.turn === s && p.handCount % 3 === 2;
-        for (let i = 0; i < p.handCount; i++) {
-          const el = this.node(`h${s}:${i}`, null);
-          el._from = s;
-          backs.push([el, drew && i === p.handCount - 1 ? 'dr' : '']);
+        const shown = v.revealed && v.revealed[s];
+        if (shown) {
+          // hand over: everyone's tiles face up, in place of the backs
+          for (const id of shown.hand) backs.push([this.node('t' + id, id), 'rv']);
+          if (shown.drawn != null) backs.push([this.node('t' + shown.drawn, shown.drawn), 'rv dr']);
+          for (const [el] of backs) el._from = s;
+        } else {
+          const drew = v.phase === 'discard' && v.turn === s && p.handCount % 3 === 2;
+          for (let i = 0; i < p.handCount; i++) {
+            const el = this.node(`h${s}:${i}`, null);
+            el._from = s;
+            backs.push([el, drew && i === p.handCount - 1 ? 'dr' : '']);
+          }
         }
         this.place(L.backs, backs);
         this.placeMelds(L.melds, p.melds, s);
@@ -350,7 +402,11 @@ export class Table {
     this.el.bar.classList.toggle('riichimode', !!ui.riichiMode);
 
     // action bar (only when changed)
-    const a = actionsHTML(v, ui);
+    const rk = resultKey(v);
+    // a new hand, a new result or the final standings always (re)opens the card
+    const fresh = rk !== this.resKey && (!this.resKey || rk.startsWith('over') !== this.el.modal._over);
+    if (!rk || fresh) this.peek = false;
+    const a = this.peek && rk ? peekActions(v) : actionsHTML(v, ui);
     const ak = a.hint + '|' + a.html;
     if (ak !== this.actKey) {
       this.actKey = ak;
@@ -373,7 +429,6 @@ export class Table {
     }
 
     // result modal (only when its key changes)
-    const rk = resultKey(v);
     if (rk !== this.resKey) {
       const wasOpen = !!this.resKey;
       this.resKey = rk;
@@ -386,8 +441,9 @@ export class Table {
           this.el.modal.classList.add('in');
         }
         this.el.modal._over = rk.startsWith('over');
-      } else this.el.modal.hidden = true;
+      }
     }
+    this.el.modal.hidden = !rk || this.peek;
 
     /* ---- LAST + INVERT + PLAY ---- */
     if (animate) this.flip(before, lastBack, newPond, v);

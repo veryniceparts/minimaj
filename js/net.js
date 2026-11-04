@@ -117,6 +117,9 @@ export function createSession(opts, handlers) {
       const urls = (info && info.lanUrls) || [];
       return urls[0] || location.origin;
     }
+    // Inside the minimaj app the page lives on 127.0.0.1, which friends can't
+    // open: invite them to the public web version instead (opts.publicUrl).
+    if (opts.publicUrl) return opts.publicUrl.replace(/#.*$/, '') + '#' + code;
     return location.origin + location.pathname + '#' + code;
   };
 

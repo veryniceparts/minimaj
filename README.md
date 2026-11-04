@@ -35,13 +35,21 @@ Pushing a `v*` tag also attaches them to a GitHub release.
 press **Join table**. You are the host, so you choose the length and press
 **Start**. To invite friends, show them the QR code in the lobby, or send them
 the `http://192.168.x.x:7777` link. They must be on the same Wi-Fi, or on your
-phone's hotspot. **Stop server** in the lobby shuts the table down.
+phone's hotspot. **Stop server** in the lobby shuts the table down and starts a
+fresh one. On Android, the back button at a table asks whether to keep it
+running (friends play on, and a computer takes your seat) or stop it. Either
+way you return to the main menu. Back on the main menu exits the app.
 
 **Joining a friend who also has the app.** On the home screen, under *or join a
 friend's table*, the app lists minimaj tables it finds on your Wi-Fi; tap one
 to join it. You can also type the **table code** shown in your friend's lobby
 (for example `AAJZ`) or their address (`192.168.1.23`). The app takes you to
 their table with your name filled in.
+
+**Friends far away (in the app).** Tap **Online room — friends far away**, then
+**Create room** and share the 5-letter code. Friends join from the minimaj app
+(**Online room → Join**) or from the web version's link. Keep the app open
+while you host.
 
 **Online room.** Host the folder as a static site (see below), open it, press
 **Create room**, and share the code or link. The host's tab runs the game, so

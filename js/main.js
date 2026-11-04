@@ -104,8 +104,11 @@ function toggleMenu(force) {
   const sw = (k, label) => `<button data-pref="${k}" class="${prefs[k] ? 'on' : ''}">${label}<span class="sw"></span></button>`;
   m.innerHTML = sw('sound', 'Sound')
     + `<button data-menu="mannum">Man numbers<span class="val">${prefs.mankanji ? '一二三' : '1 2 3'}</span></button>`
-    + (session ? `<hr><button class="leave" data-menu="leave">Leave table</button>` : '');
+    + (session ? `<hr><button class="leave" data-menu="leave">Leave table</button>` : '')
+    // only on the device running the minimaj app's table
+    + (info && info.hostOk ? `${session ? '' : '<hr>'}<button class="leave" data-menu="stop">Stop server</button>` : '');
   m.hidden = false;
+  let stopArmedMenu = false;
   m.onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -121,6 +124,13 @@ function toggleMenu(force) {
       b.querySelector('.val').textContent = prefs.mankanji ? '一二三' : '1 2 3';
       applyManNumerals();
     } else if (b.dataset.menu === 'leave') { m.hidden = true; leave(); }
+    else if (b.dataset.menu === 'stop') {
+      // two taps, like the lobby button: everyone at this table is disconnected
+      if (!stopArmedMenu) { stopArmedMenu = true; b.textContent = 'Tap again to stop the server'; return; }
+      m.hidden = true;
+      auto.clear();
+      fetch('/api/quit', { method: 'POST' }).catch(() => {}).finally(showStopped);
+    }
   };
 }
 
@@ -180,6 +190,7 @@ function showHome(err) {
       ${own ? '' : '<span class="pill-note">Joining a friend\'s table</span>'}</div>
       <div class="c2">${nameField}
       <button id="join" class="act hot wide">${own ? 'Host a table' : 'Join table'}</button>
+      ${own ? '<button id="online" class="act ghost wide">Online room — friends far away</button>' : ''}
       ${errHTML}</div>
       ${own ? `<div class="c3"><div class="or">or join a friend's table</div>
       <ul class="nearby" id="nearby"><li class="muted small" id="scanmsg">Looking for tables nearby…</li></ul>
@@ -193,13 +204,34 @@ function showHome(err) {
     const go = () => connect({ mode: 'lan', name: getName(nameEl), info });
     $('join').onclick = go;
     nameEl.onkeydown = (e) => { if (e.key === 'Enter') go(); };
-    if (own) setupJoinFriend(nameEl);
+    if (own) {
+      setupJoinFriend(nameEl);
+      $('online').onclick = () => { getName(nameEl); showOnline(); };
+    }
     if (!FAKE) nameEl.focus();
     return;
   }
-  const code = net && net.normCode ? net.normCode(location.hash.slice(1)) : '';
+  showOnline(err);
+}
+
+// Public web version, used for online-room invite links from inside the app
+// (the app's own pages live on 127.0.0.1, which friends can't open).
+const PUBLIC_URL = 'https://veryniceparts.github.io/minimaj/';
+
+// Online room (internet play via WebRTC). The web version's home screen; in
+// the app it's a separate screen reached from "Online room" with a Back button.
+function showOnline(err) {
+  endSession();
+  setScreen('home');
+  const inApp = !!info;
+  const name = esc(store.get('minimaj-name', ''));
+  const errHTML = err ? `<p class="err">${esc(err)}</p>` : '';
+  const nameField = `<label>Your name<input id="name" maxlength="16" autocomplete="nickname" value="${name}" placeholder="Name" enterkeyhint="go"></label>`;
+  const code = !inApp && net && net.normCode ? net.normCode(location.hash.slice(1)) : '';
   app.innerHTML = `<div class="card split"><div class="c1">${logo()}
-    <p class="muted">Riichi mahjong with friends, peer-to-peer. Empty seats are played by the computer.</p></div>
+    <p class="muted">${inApp
+      ? 'Online room: play with friends anywhere over the internet. Share the room code; they join from the minimaj app or the web version. Keep this app open while you host.'
+      : 'Riichi mahjong with friends, peer-to-peer. Empty seats are played by the computer.'}</p></div>
     <div class="c2">${nameField}
     <button id="create" class="act hot wide">Create room</button>
     <div class="or">or join a friend</div>
@@ -207,17 +239,20 @@ function showHome(err) {
       <input id="code" maxlength="5" placeholder="CODE" value="${esc(code)}" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="go">
       <button id="joinc" class="act">Join</button>
     </div>
+    ${inApp ? '<button id="back" class="act ghost wide">Back</button>' : ''}
     ${errHTML}</div>
-    ${howTo()}
+    ${inApp ? '' : howTo()}
   </div>`;
   const nameEl = $('name');
   const codeEl = $('code');
-  $('create').onclick = () => connect({ mode: 'online', name: getName(nameEl), create: true });
+  const extra = inApp ? { publicUrl: PUBLIC_URL } : {};
+  $('create').onclick = () => connect({ mode: 'online', name: getName(nameEl), create: true, ...extra });
   const join = () => {
     const c = net.normCode(codeEl.value);
     if (c.length !== 5) { codeEl.focus(); toast('Enter the 5-character room code'); return; }
-    connect({ mode: 'online', name: getName(nameEl), code: c });
+    connect({ mode: 'online', name: getName(nameEl), code: c, ...extra });
   };
+  if (inApp) $('back').onclick = () => showHome();
   $('joinc').onclick = join;
   codeEl.onkeydown = (e) => { if (e.key === 'Enter') join(); };
   codeEl.oninput = () => { codeEl.value = net.normCode(codeEl.value); };
@@ -296,7 +331,12 @@ function connect(opts) {
 const handlers = {
   onLobby: (l) => { if (session) showLobby(l); },
   onView: (v) => { if (session) renderGame(v); },
-  onError: (msg, fatal) => { if (fatal) { auto.clear(); showHome(msg); } else toast(msg); },
+  onError: (msg, fatal) => {
+    if (!fatal) { toast(msg); return; }
+    auto.clear();
+    if (info && session && session.mode === 'online') showOnline(msg); // app: stay on the online screen
+    else showHome(msg);
+  },
   onStatus: (text) => { if (text) toast(text); },
   onConn: (state) => {
     if (state === 'reconnecting') banner('Reconnecting…');
@@ -502,7 +542,14 @@ async function boot() {
   }
   showHome(loadErr);
   const prev = !loadErr && !FAKE ? auto.load() : null;
-  if (prev && prev.name && (prev.mode === 'lan' ? !!info : !info)) connect(prev.mode === 'lan' ? { ...prev, info } : prev);
+  // online rooms work in the browser and inside the app; LAN tables only in the app
+  if (prev && prev.name && (prev.mode === 'lan' ? !!info : true)) connect(prev.mode === 'lan' ? { ...prev, info } : prev);
   if (FAKE && params.has('auto')) $(info ? 'join' : 'create').click();
 }
+// Used by the Android app's back button: which screen is showing, and leave the table.
+window.minimajNav = {
+  screen: () => screen,
+  leave: () => { if (screen !== 'home') leave(); },
+};
+
 boot();

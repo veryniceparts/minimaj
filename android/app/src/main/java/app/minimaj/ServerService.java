@@ -43,6 +43,8 @@ public class ServerService extends Service {
     static volatile String error = null;
     /** Called on the main thread when the server stops. */
     static volatile Runnable onStopped = null;
+    /** True when the user stopped the server from the notification: the app should close. */
+    static volatile boolean quitApp = false;
 
     private Process process;
     private PowerManager.WakeLock wakeLock;
@@ -58,7 +60,8 @@ public class ServerService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-            stopSelf(); // from the notification's Stop action
+            quitApp = true; // the notification's Stop action closes the app too
+            stopSelf();
             return START_NOT_STICKY;
         }
         goForeground(port > 0 ? "Running on port " + port : "Starting…");

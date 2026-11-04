@@ -576,6 +576,16 @@ export class Game {
       result: this.phase === 'end' || this.phase === 'over' ? this.result : null,
       ready: this.ready ? [...this.ready] : [],
       final: this.phase === 'over' ? this.final : null,
+      revealed: this.phase === 'end' || this.phase === 'over' ? this.revealHands() : null,
     };
+  }
+
+  // Every seat's concealed hand, for inspecting the table once the hand is over.
+  revealHands() {
+    return this.players.map((p) => {
+      const hand = p.hand || [];
+      const drawn = p.drawn != null && hand.includes(p.drawn) && hand.length % 3 === 2 ? p.drawn : null;
+      return { hand: sortIds(drawn != null ? hand.filter((id) => id !== drawn) : hand), drawn };
+    });
   }
 }

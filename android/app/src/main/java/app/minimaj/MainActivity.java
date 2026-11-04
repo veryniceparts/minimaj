@@ -64,7 +64,8 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
-                if ("127.0.0.1".equals(u.getHost()) || "localhost".equals(u.getHost())) return false;
+                // our own table and friends' tables on the local network stay in the app
+                if (isLocalHost(u.getHost())) return false;
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, u)); // other links: real browser
                 } catch (Exception ignored) {
@@ -108,32 +109,91 @@ public class MainActivity extends Activity {
         status.setVisibility(View.GONE);
     }
 
+    static boolean isLocalHost(String h) {
+        if (h == null) return false;
+        if (h.equals("127.0.0.1") || h.equals("localhost")) return true;
+        if (h.startsWith("10.") || h.startsWith("192.168.")) return true;
+        if (h.startsWith("172.")) {
+            String[] p = h.split("\\.");
+            try {
+                int b = Integer.parseInt(p[1]);
+                return b >= 16 && b <= 31;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+        return false;
+    }
+
     private void onServerStopped() {
         if (isFinishing() || isDestroyed()) return;
+        if (ServerService.quitApp) { // the notification's Stop action
+            ServerService.quitApp = false;
+            finish();
+            return;
+        }
         if (loaded) {
-            finish(); // e.g. "Stop server" in the game or the notification's Stop action
+            // "Stop server" in the lobby or "Stop table" on back: start a fresh
+            // table and go back to the main menu instead of leaving the app.
+            loaded = false;
+            web.setVisibility(View.INVISIBLE);
+            status.setText("Starting a new table…");
+            status.setVisibility(View.VISIBLE);
+            main.postDelayed(this::startServer, 300);
         } else if (ServerService.error != null) {
             status.setText(ServerService.error);
         }
     }
 
+    private boolean onOwnTable() {
+        Uri u = Uri.parse(web.getUrl() == null ? "" : web.getUrl());
+        String h = u.getHost();
+        return "127.0.0.1".equals(h) || "localhost".equals(h);
+    }
+
+    private void goHome() {
+        int p = ServerService.port;
+        if (p > 0) web.loadUrl("http://127.0.0.1:" + p + "/");
+    }
+
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (web.canGoBack()) {
-            web.goBack();
+        if (!loaded) { super.onBackPressed(); return; }
+        if (!onOwnTable()) {
+            // at a friend's table: back to our own main menu
+            new AlertDialog.Builder(this)
+                    .setTitle("Leave this table?")
+                    .setMessage("A computer player takes your seat. You can rejoin from the main menu.")
+                    .setPositiveButton("Leave", (d, w) -> goHome())
+                    .setNegativeButton("Cancel", null)
+                    .show();
             return;
         }
-        new AlertDialog.Builder(this)
-                .setTitle("Leave minimaj?")
-                .setMessage("Stop the game server? Other players will be disconnected.")
-                .setPositiveButton("Stop server", (d, w) -> {
-                    stopService(new Intent(this, ServerService.class));
-                    finish();
-                })
-                .setNeutralButton("Keep running", (d, w) -> moveTaskToBack(true))
-                .setNegativeButton("Cancel", null)
-                .show();
+        web.evaluateJavascript("(window.minimajNav && minimajNav.screen()) || ''", (v) -> {
+            String screen = v == null ? "" : v.replace("\"", "");
+            if (screen.equals("home") || screen.isEmpty()) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Exit minimaj?")
+                        .setPositiveButton("Exit", (d, w) -> {
+                            ServerService.quitApp = true;
+                            stopService(new Intent(this, ServerService.class));
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+                return;
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("Leave the table?")
+                    .setMessage("Keep it running so friends can play on (a computer takes your seat), or stop it and disconnect everyone.")
+                    .setPositiveButton("Keep running", (d, w) -> web.evaluateJavascript("minimajNav.leave()", null))
+                    .setNeutralButton("Stop table", (d, w) -> {
+                        web.evaluateJavascript("minimajNav.leave()", null);
+                        stopService(new Intent(this, ServerService.class)); // restarts, then main menu
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
     }
 
     @Override
