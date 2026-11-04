@@ -62,6 +62,7 @@ type Server struct {
 
 	mu     sync.Mutex
 	conns  map[string]*wsConn
+	seen   map[string]bool // remote addresses that loaded a page (for the log)
 	nextID atomic.Int64
 }
 
@@ -137,12 +138,14 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ws", s.handleWS)
 	mux.HandleFunc("GET /info.json", s.handleInfo)
+	mux.HandleFunc("OPTIONS /info.json", s.handleInfoPreflight)
 	mux.HandleFunc("POST /api/quit", s.handleQuit)
 	mux.HandleFunc("GET /", s.handleStatic)
 	return mux
 }
 
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
+	s.noteDevice(r)
 	h := w.Header()
 	h.Set("Cache-Control", "no-cache")
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -150,6 +153,31 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 		h.Set("ETag", t)
 	}
 	s.static.ServeHTTP(w, r)
+}
+
+// noteDevice logs the first page load from each other device, so whoever runs
+// the table can tell "my friend's phone never reached me" (Wi-Fi isolation,
+// firewall, wrong network) from problems after the page loaded.
+func (s *Server) noteDevice(r *http.Request) {
+	if isLoopback(r) {
+		return
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	s.mu.Lock()
+	if s.seen == nil {
+		s.seen = map[string]bool{}
+	}
+	first := !s.seen[host] && len(s.seen) < 1000
+	if first {
+		s.seen[host] = true
+	}
+	s.mu.Unlock()
+	if first {
+		s.loop.Logf("device %s opened the table page", host)
+	}
 }
 
 func isLoopback(r *http.Request) bool {
@@ -206,12 +234,26 @@ func (s *Server) roomSummary() map[string]any {
 	}
 }
 
+// corsInfo makes /info.json readable from other minimaj pages on the LAN
+// ("tables nearby"). It only exposes public, non-secret fields. The Private
+// Network Access header answers Chrome's preflight for requests into the
+// local network.
+func corsInfo(h http.Header) {
+	h.Set("Access-Control-Allow-Origin", "*")
+	h.Set("Access-Control-Allow-Private-Network", "true")
+}
+
+func (s *Server) handleInfoPreflight(w http.ResponseWriter, r *http.Request) {
+	corsInfo(w.Header())
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
+	w.Header().Set("Access-Control-Max-Age", "600")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
-	// Readable cross-origin so other minimaj pages on the LAN can find this
-	// table ("tables nearby"). It only exposes public, non-secret fields.
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	corsInfo(w.Header())
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"server":  true,
 		"version": s.version,
@@ -237,6 +279,7 @@ func (s *Server) handleQuit(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	c, err := websocket.Accept(w, r, nil) // default origin check: same host only
 	if err != nil {
+		s.loop.Logf("websocket from %s refused: %v (origin %q, host %q)", r.RemoteAddr, err, r.Header.Get("Origin"), r.Host)
 		return
 	}
 	c.SetReadLimit(wsReadLimit)

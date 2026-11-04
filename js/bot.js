@@ -1,6 +1,6 @@
 // Simple computer player: shanten/ukeire efficiency with basic defense.
 import { tileType, isYaochu, isHonor, doraFromIndicator, countsOf, isRed } from './tiles.js';
-import { shanten, forEachImprovingTile } from './hand.js';
+import { shanten, forEachImprovingTile, waitsOf, evaluateWin } from './hand.js';
 
 function visibleCounts(g, seat) {
   const v = new Array(34).fill(0);
@@ -36,14 +36,38 @@ function safety(t, q, g) {
   return 0;
 }
 
+const isYakuhai = (t, g, seat) => t >= 31 || t === g.seatWind(seat) || t === g.roundWindType();
+
+// An open hand whose only planned yaku is tanyao: no yakuhai triplet or pair.
+function needsTanyao(g, seat, c) {
+  const p = g.players[seat];
+  if (!p.melds.some((m) => m.type !== 'ankan')) return false;
+  if (p.melds.some((m) => m.type !== 'chi' && isYakuhai(tileType(m.tiles[0]), g, seat))) return false;
+  return !c.some((n, t) => n >= 2 && isYakuhai(t, g, seat));
+}
+
+// Does the open hand, after discarding one tile of type t, wait on at least
+// one tile that wins with a yaku? (Only called for tenpai discards.)
+function tenpaiHasYaku(g, seat, t) {
+  const p = g.players[seat];
+  const i = p.hand.findIndex((id) => tileType(id) === t);
+  const rest = p.hand.slice(0, i).concat(p.hand.slice(i + 1));
+  for (const w of waitsOf(countsOf(rest), p.melds.length)) {
+    const ctx = g.winCtx(seat, w * 4 + 3, false);
+    ctx.hand = rest.concat([w * 4 + 3]);
+    ctx.ippatsu = false;
+    if (evaluateWin(ctx)) return true;
+  }
+  return false;
+}
+
 function tileValue(t, g, seat) {
   // lower = discard earlier
   const p = g.players[seat];
   const dora = g.doraIndicators().map((id) => doraFromIndicator(tileType(id)));
   let v;
   if (isHonor(t)) {
-    const yakuhai = t >= 31 || t === g.seatWind(seat) || t === g.roundWindType();
-    v = yakuhai ? 2 : 0;
+    v = isYakuhai(t, g, seat) ? 2 : 0;
   } else if (isYaochu(t)) v = 3;
   else if (t % 9 === 1 || t % 9 === 7) v = 4;
   else v = 5;
@@ -84,7 +108,11 @@ export function chooseDiscard(g, seat, allowed) {
     pick = pool[0];
   } else {
     const pool = evals.filter((e) => e.sh === minSh);
-    pool.sort((a, b) => b.uke - a.uke || a.val - b.val);
+    // an open tanyao hand throws terminals and honors first, or it ends without a yaku
+    const tan = needsTanyao(g, seat, c);
+    // open and tenpai: prefer waits that can actually win (a yaku on some wait)
+    if (minSh === 0 && open > 0) for (const e of pool) e.yaku = tenpaiHasYaku(g, seat, e.t) ? 1 : 0;
+    pool.sort((a, b) => (b.yaku || 0) - (a.yaku || 0) || (tan ? isYaochu(b.t) - isYaochu(a.t) : 0) || b.uke - a.uke || a.val - b.val);
     pick = pool[0];
   }
   // choose a concrete id: prefer non-red copy, drawn tile last
@@ -98,7 +126,26 @@ export function botTurn(g, seat) {
   const p = g.players[seat];
   if (o.tsumo) return { type: 'tsumo' };
   if (p.riichi) return { type: 'discard', tile: o.discard[0] };
-  const { id } = chooseDiscard(g, seat, o.discard);
+  const { id, sh } = chooseDiscard(g, seat, o.discard);
+  // a closed or added kan when it costs no shanten (and no one is in riichi for an added kan)
+  if (o.ankan.length || o.kakan.length) {
+    const c = countsOf(p.hand);
+    const open = p.melds.length;
+    for (const t of o.ankan) {
+      c[t] -= 4;
+      const s2 = shanten(c, open + 1);
+      c[t] += 4;
+      if (s2 <= sh) return { type: 'ankan', t };
+    }
+    const danger = g.players.some((q, i) => i !== seat && (q.riichi || q.riichiPending));
+    for (const t of o.kakan) {
+      if (danger) break;
+      c[t]--;
+      const s2 = shanten(c, open);
+      c[t]++;
+      if (s2 <= sh) return { type: 'kakan', t };
+    }
+  }
   if (o.riichi.length) {
     if (o.riichi.includes(id)) return { type: 'discard', tile: id, riichi: true };
     const r = chooseDiscard(g, seat, o.riichi);

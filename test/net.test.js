@@ -178,5 +178,203 @@ export async function runNetTests() {
   for (const k of Object.keys(saved)) {
     if (saved[k]) Object.defineProperty(globalThis, k, saved[k]); else delete globalThis[k];
   }
+  n += await runOnlineTests();
+  return n;
+}
+
+/* ---------------- online rooms (PeerJS) with a fake PeerJS ---------------- */
+
+const tickReal = () => new Promise((r) => setImmediate(r)); // lets real promises (PeerJS load, ICE config) settle
+
+async function runOnlineTests() {
+  const net = await import('../js/net.js');
+  const { createSession, codeProblem, parseIceResponse, hasTurn, iceServers } = net;
+  let n = 0;
+
+  // pure helpers
+  assert.equal(codeProblem('ABCDE'), null);
+  assert.ok(/5-character/.test(codeProblem('ABC')));
+  assert.ok(/never contain/.test(codeProblem('ABCD0')));
+  assert.deepEqual(parseIceResponse([{ urls: 'turn:a' }, { nope: 1 }, null]), [{ urls: 'turn:a' }]);
+  assert.deepEqual(parseIceResponse({ iceServers: { urls: ['turn:b'], username: 'u', credential: 'c' } }), [{ urls: ['turn:b'], username: 'u', credential: 'c' }]);
+  assert.deepEqual(parseIceResponse({ iceServers: [{ urls: 'stun:c' }] }), [{ urls: 'stun:c' }]);
+  assert.deepEqual(parseIceResponse('junk'), []);
+  assert.equal(hasTurn([{ urls: 'stun:x' }]), false);
+  assert.equal(hasTurn([{ urls: ['stun:x', 'turns:y:443'] }]), true);
+  n++;
+
+  const clock = installFakeClock();
+  const realNow = Date.now;
+  Date.now = clock.now;
+  const saved = {};
+  for (const k of ['window', 'document', 'location', 'fetch']) saved[k] = Object.getOwnPropertyDescriptor(globalThis, k);
+  const def = (k, v) => Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true });
+  const mkStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), m }; };
+  const listeners = [];
+  def('document', {
+    visibilityState: 'visible',
+    addEventListener: (e, f) => listeners.push(f),
+    removeEventListener: (e, f) => { const i = listeners.indexOf(f); if (i >= 0) listeners.splice(i, 1); },
+  });
+  def('location', { protocol: 'https:', host: 'example.org', origin: 'https://example.org', pathname: '/minimaj/' });
+
+  // fake PeerJS: a signaling registry plus data connections with 1 ms latency
+  const net0 = { ids: new Map(), up: true, iceBlocked: false, taken: new Map(), opts: [] };
+  class Em {
+    constructor() { this.h = {}; }
+    on(e, f) { (this.h[e] = this.h[e] || []).push(f); return this; }
+    emit(e, ...a) { for (const f of (this.h[e] || []).slice()) f(...a); }
+  }
+  class Conn extends Em {
+    constructor(peerId) { super(); this.peer = peerId; this.open = false; this.other = null; this.peerConnection = { iceConnectionState: 'new' }; }
+    send(d) { const o = this.other; const copy = JSON.parse(JSON.stringify(d)); setTimeout(() => { if (o && o.open) o.emit('data', copy); }, 1); }
+    close() { if (!this.open && !this.other) return; const o = this.other; this.other = null; const was = this.open; this.open = false; if (was) this.emit('close'); if (o) o.close(); }
+  }
+  let anon = 0;
+  class FakePeer extends Em {
+    constructor(id, opts) {
+      super();
+      if (id && typeof id === 'object') { opts = id; id = null; }
+      net0.opts.push(opts);
+      this.id = id || 'anon' + ++anon; this.open = false; this.disconnected = false; this.destroyed = false;
+      setTimeout(() => this._register(), 5);
+    }
+    _register() {
+      if (this.destroyed) return;
+      if (!net0.up) { this.emit('error', { type: 'network' }); this.disconnected = true; this.emit('disconnected'); return; }
+      const until = net0.taken.get(this.id);
+      if ((until && clock.now() < until) || (net0.ids.has(this.id) && net0.ids.get(this.id) !== this)) { this.emit('error', { type: 'unavailable-id' }); this.disconnected = true; this.emit('disconnected'); return; }
+      net0.ids.set(this.id, this); this.open = true; this.disconnected = false; this.emit('open', this.id);
+    }
+    _drop() { if (net0.ids.get(this.id) === this) net0.ids.delete(this.id); this.open = false; this.emit('error', { type: 'network' }); this.disconnected = true; this.emit('disconnected'); }
+    reconnect() { if (!this.disconnected || this.destroyed) throw new Error('bad reconnect'); this.disconnected = false; setTimeout(() => this._register(), 5); }
+    connect(id) {
+      const c = new Conn(id);
+      setTimeout(() => {
+        const host = net0.ids.get(id);
+        if (!host || !net0.up) { this.emit('error', { type: 'peer-unavailable' }); return; }
+        if (net0.iceBlocked) { c.peerConnection.iceConnectionState = 'checking'; c.emit('iceStateChanged', 'checking'); return; }
+        const hc = new Conn(this.id);
+        c.other = hc; hc.other = c;
+        host.emit('connection', hc);
+        setTimeout(() => { hc.open = true; c.open = true; hc.emit('open'); c.emit('open'); }, 2);
+      }, 3);
+      return c;
+    }
+    destroy() { this.destroyed = true; this.open = false; if (net0.ids.get(this.id) === this) net0.ids.delete(this.id); }
+  }
+  const mkWindow = (extra = {}) => ({ localStorage: mkStore(), sessionStorage: mkStore(), Peer: FakePeer, RTCPeerConnection: function () {}, ...extra });
+
+  const mk = (opts, win) => {
+    def('window', win || mkWindow());
+    const log = { lobby: null, view: null, errors: [], conn: [], status: [] };
+    const s = createSession(opts, {
+      onLobby: (l) => { log.lobby = l; },
+      onView: (v) => { log.view = v; },
+      onError: (msg, fatal) => log.errors.push([msg, fatal]),
+      onConn: (st) => log.conn.push(st),
+      onStatus: (t) => log.status.push(t),
+    });
+    return { s, log, win: globalThis.window };
+  };
+  const settle = async (ms = 50) => { for (let i = 0; i < 5; i++) { await tickReal(); clock.advance(ms / 5); } };
+
+  // host opens a room, a friend joins; the ICE list from config.js reaches PeerJS
+  const H = mk({ mode: 'online', name: 'Hana', create: true });
+  await settle();
+  assert.equal(H.log.conn.at(-1), 'open');
+  assert.equal(H.s.code.length, 5);
+  assert.equal(codeProblem(H.s.code), null);
+  assert.equal(H.log.lobby.joinUrl, 'https://example.org/minimaj/#' + H.s.code);
+  assert.equal(H.win.sessionStorage.getItem('minimaj-host-code'), H.s.code);
+  assert.ok(net0.opts[0].config.iceServers.some((x) => [].concat(x.urls).some((u) => /^stun:/.test(u))), 'STUN from config.js');
+  const J = mk({ mode: 'online', name: 'Jun', code: H.s.code.toLowerCase() });
+  await settle();
+  assert.equal(J.log.conn.at(-1), 'open');
+  assert.equal(H.log.lobby.members.length, 2);
+  assert.equal(J.log.lobby.isHost, false);
+  n++;
+
+  // the host loses the room server mid-game: the friend's data channel keeps
+  // working, the host hears about it once and is re-registered automatically
+  H.s.start();
+  await settle();
+  assert.ok(J.log.view && H.log.view);
+  const hostPeer = net0.ids.get('minimaj-v1-' + H.s.code);
+  const jPeer = [...net0.ids.values()].find((p) => p.id.startsWith('anon'));
+  net0.up = false;
+  hostPeer._drop(); jPeer._drop();
+  await settle(6000);
+  assert.equal(J.log.conn.at(-1), 'open', 'joiner not dropped by a signaling outage');
+  assert.equal(H.log.status.filter((x) => /server/.test(x)).length, 1, 'one notice per outage');
+  net0.up = true;
+  await settle(20000);
+  assert.ok(net0.ids.get('minimaj-v1-' + H.s.code), 'host registered again');
+  assert.ok(H.log.status.some((x) => /Back online/.test(x)));
+  assert.equal(J.log.view.players[J.log.view.seat].kind, 'human');
+  n++;
+
+  // wrong code: a clear, fatal "not found" (no endless spinner)
+  const W = mk({ mode: 'online', name: 'W', code: 'ZZZZZ' });
+  await settle(200);
+  assert.equal(W.log.errors.length, 1);
+  assert.ok(/No room with the code ZZZZZ/.test(W.log.errors[0][0]) && W.log.errors[0][1]);
+  assert.equal(W.log.conn.at(-1), 'closed');
+  // impossible code: rejected before touching the network
+  const B = mk({ mode: 'online', name: 'B', code: 'AB0DE' });
+  await settle();
+  assert.ok(/never contain/.test(B.log.errors[0][0]));
+  n++;
+
+  // a network that blocks peer-to-peer: a few tries, then say so
+  net0.iceBlocked = true;
+  const X = mk({ mode: 'online', name: 'X', code: H.s.code });
+  for (let i = 0; i < 12; i++) await settle(5000);
+  assert.equal(X.log.errors.length, 1, JSON.stringify(X.log));
+  assert.ok(/blocks direct peer-to-peer/.test(X.log.errors[0][0]), X.log.errors[0][0]);
+  assert.equal(X.log.conn.at(-1), 'closed');
+  assert.ok(X.log.status.length >= 2, 'retried before giving up');
+  net0.iceBlocked = false;
+  n++;
+
+  // the host reloads: the server still holds the old code for a while; the
+  // new tab waits for it instead of opening a room nobody can find
+  const oldCode = H.s.code;
+  const hostWin = H.win;
+  H.s.close(); J.s.close();
+  await settle();
+  net0.taken.set('minimaj-v1-' + oldCode, clock.now() + 7000);
+  const H2 = mk({ mode: 'online', name: 'Hana', create: true }, { ...mkWindow(), sessionStorage: hostWin.sessionStorage });
+  await settle(200);
+  assert.ok(H2.log.status.some((x) => x.includes(oldCode)), 'tells the host it is waiting');
+  for (let i = 0; i < 5; i++) await settle(2000);
+  assert.equal(H2.s.code, oldCode);
+  assert.equal(H2.log.conn.at(-1), 'open');
+  assert.equal(H2.log.errors.length, 0);
+  H2.s.close();
+  n++;
+
+  // no WebRTC at all (some in-app browsers): say so instead of failing oddly
+  const N = mk({ mode: 'online', name: 'N', code: 'ABCDE' }, mkWindow({ RTCPeerConnection: undefined }));
+  await settle();
+  assert.ok(/WebRTC/.test(N.log.errors[0][0]));
+  n++;
+
+  // TURN credentials from an endpoint (window.MINIMAJ_NET / config.js iceUrl)
+  let fetched = 0;
+  def('fetch', async (url) => { fetched++; assert.equal(url, 'https://turn.example/creds'); return { ok: true, status: 200, json: async () => ({ iceServers: [{ urls: 'turn:t.example:3478', username: 'u', credential: 'c' }] }) }; });
+  def('window', mkWindow({ MINIMAJ_NET: { iceUrl: 'https://turn.example/creds', iceServers: [{ urls: 'stun:s.example' }] } }));
+  const list = await iceServers();
+  assert.deepEqual(list.map((x) => x.urls), ['turn:t.example:3478', 'stun:s.example']);
+  await iceServers();
+  assert.equal(fetched, 1, 'credentials are cached');
+  n++;
+
+  clock.runAll(() => false, 2000);
+  clock.uninstall();
+  Date.now = realNow;
+  for (const k of Object.keys(saved)) {
+    if (saved[k]) Object.defineProperty(globalThis, k, saved[k]); else delete globalThis[k];
+  }
   return n;
 }

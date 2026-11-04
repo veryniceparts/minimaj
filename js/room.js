@@ -4,7 +4,12 @@
 //   env = { send(connId, msgObj), close(connId), now(): ms, log?(...a), botDelay?: ms }
 import { Game } from './game.js';
 
+// Protocol version. Bump PROTO when the messages change incompatibly; raise
+// MIN_PROTO only when this room can no longer talk to older clients. Friends
+// often run different builds (an old app vs. the newest web page), so the
+// room accepts any client in [MIN_PROTO, PROTO] and says who must update.
 export const PROTO = 1;
+export const MIN_PROTO = 1;
 
 const MAX = 4;
 const BOT_NAMES = ['CPU Ume', 'CPU Take', 'CPU Matsu'];
@@ -42,11 +47,21 @@ export function createRoom(env) {
   const hostConnected = () => members.some((m) => isHost(m) && m.connId != null);
   const seatOf = (m) => (seats ? seats.indexOf(m) : -1);
 
-  function fatal(connId, msg) {
-    send(connId, { t: 'error', msg, fatal: true });
+  // Send a fatal error, then close a moment later so the message gets out first.
+  // code lets clients tell the reasons apart (e.g. 'version', 'replaced', 'full').
+  function fatal(connId, msg, code) {
+    send(connId, { t: 'error', msg, fatal: true, code: code || 'fatal' });
     const c = conns.get(connId);
     if (c) c.fatal = true;
     setTimeout(() => { if (conns.has(connId)) { closeConn(connId); onClosed(connId); } }, 300);
+  }
+
+  function versionError(ver) {
+    const v = typeof ver === 'number' ? ver : 0;
+    if (v < MIN_PROTO) {
+      return 'Your minimaj is older than the host\'s. Reload the page — or, in the minimaj app, install the latest version — then join again.';
+    }
+    return 'The host is running an older minimaj. Ask them to reload their page or update their minimaj app, then join again.';
   }
 
   /* ---------------- batching ---------------- */
@@ -106,7 +121,7 @@ export function createRoom(env) {
   }
 
   function onHello(connId, c, msg) {
-    if (msg.ver !== PROTO) { fatal(connId, 'This page is out of date. Please reload.'); return; }
+    if (!(typeof msg.ver === 'number' && msg.ver >= MIN_PROTO && msg.ver <= PROTO)) { fatal(connId, versionError(msg.ver), 'version'); return; }
     const name = cleanName(msg.name);
     let cid = typeof msg.cid === 'string' || typeof msg.cid === 'number' ? String(msg.cid).slice(0, 64) : '';
     if (!cid) cid = 'conn:' + String(connId);
@@ -121,18 +136,29 @@ export function createRoom(env) {
       if (m.connId != null && m.connId !== connId) {
         const oldId = m.connId;
         const oc = conns.get(oldId);
-        if (oc) { oc.member = null; conns.delete(oldId); }
-        closeConn(oldId);
+        if (oc && oc.meta.hostOk && !(c.meta && c.meta.hostOk)) {
+          // Another tab of the host's own browser (same client id) tries to
+          // join as a guest: replacing the host's own connection would make
+          // the two tabs kick each other forever.
+          fatal(connId, 'This table is already open in another tab of this browser. Use that tab, or join from another browser or device.', 'duplicate');
+          return;
+        }
+        // Tell the old connection why it is closed, so it stops instead of
+        // reconnecting and kicking this one in turn (two tabs, same browser).
+        if (oc) {
+          oc.member = null;
+          fatal(oldId, 'You joined this table from another tab or window, so this one was disconnected.', 'replaced');
+        } else closeConn(oldId);
       }
       m.connId = connId; m.name = name; m.gone = false;
     } else if (!game) {
-      if (members.length >= MAX) { fatal(connId, 'Room is full.'); return; }
+      if (members.length >= MAX) { fatal(connId, 'Room is full.', 'full'); return; }
       m = { cid, name, connId, gone: false };
       members.push(m);
     } else {
       // join a running game: take over a computer seat
       const seat = seats.findIndex((x) => !x || x.gone);
-      if (seat < 0) { fatal(connId, 'Game is full.'); return; }
+      if (seat < 0) { fatal(connId, 'Game is full.', 'full'); return; }
       const old = seats[seat];
       if (old) members = members.filter((x) => x !== old);
       m = { cid, name, connId, gone: false };

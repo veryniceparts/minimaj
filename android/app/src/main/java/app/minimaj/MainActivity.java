@@ -13,6 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -29,6 +30,8 @@ public class MainActivity extends Activity {
     private TextView status;
     private long waitStart;
     private boolean loaded = false;
+    /** The service could not be started from the background: start it on the next onResume. */
+    private boolean startOnResume = false;
     private final Runnable stoppedListener = () -> main.post(this::onServerStopped);
 
     private final Runnable poll = new Runnable() {
@@ -38,9 +41,9 @@ public class MainActivity extends Activity {
             if (p > 0) {
                 load(p);
             } else if (ServerService.error != null) {
-                status.setText(ServerService.error);
+                showError(ServerService.error);
             } else if (System.currentTimeMillis() - waitStart > START_TIMEOUT_MS) {
-                status.setText("The game server did not start.");
+                showError("The game server did not start.");
             } else {
                 main.postDelayed(this, 100);
             }
@@ -72,6 +75,19 @@ public class MainActivity extends Activity {
                 }
                 return true;
             }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                // The page's renderer crashed or was killed to free memory. Without
+                // this the whole app is killed; instead build a fresh activity (the
+                // server keeps running, so the table is still there).
+                if (view == web) {
+                    web = null;
+                    view.destroy();
+                    if (!isFinishing()) recreate();
+                }
+                return true;
+            }
         });
         web.setVisibility(View.INVISIBLE);
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
@@ -82,6 +98,12 @@ public class MainActivity extends Activity {
         status.setTextSize(16);
         status.setGravity(Gravity.CENTER);
         status.setPadding(48, 48, 48, 48);
+        status.setOnClickListener((v) -> {
+            if (!loaded && retryable) { // "Tap to try again"
+                status.setText("Starting the game server…");
+                startServer();
+            }
+        });
         root.addView(status, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
 
@@ -93,12 +115,42 @@ public class MainActivity extends Activity {
         startServer();
     }
 
+    private boolean retryable = false;
+
+    private void showError(String msg) {
+        retryable = true;
+        status.setText(msg + "\n\nTap to try again.");
+    }
+
     private void startServer() {
         ServerService.error = null;
-        startForegroundService(new Intent(this, ServerService.class));
+        ServerService.quitApp = false; // a stale notification Stop must not close this new table
+        retryable = false;
+        try {
+            startForegroundService(new Intent(this, ServerService.class));
+        } catch (RuntimeException e) {
+            // Android 12+: ForegroundServiceStartNotAllowedException while in the
+            // background (e.g. the server exited while the app was not shown)
+            startOnResume = true;
+            return;
+        }
+        startOnResume = false;
         waitStart = System.currentTimeMillis();
         main.removeCallbacks(poll);
         main.post(poll);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (web != null) web.onResume();
+        if (startOnResume) startServer();
+    }
+
+    @Override
+    protected void onPause() {
+        if (web != null) web.onPause();
+        super.onPause();
     }
 
     private void load(int port) {
@@ -109,20 +161,27 @@ public class MainActivity extends Activity {
         status.setVisibility(View.GONE);
     }
 
+    /**
+     * This device or a private LAN address (a friend's minimaj table): such pages
+     * stay in the app. Only IPv4 literals count, so a host name like
+     * "192.168.example.com" still opens in the real browser.
+     */
     static boolean isLocalHost(String h) {
         if (h == null) return false;
-        if (h.equals("127.0.0.1") || h.equals("localhost")) return true;
-        if (h.startsWith("10.") || h.startsWith("192.168.")) return true;
-        if (h.startsWith("172.")) {
-            String[] p = h.split("\\.");
-            try {
-                int b = Integer.parseInt(p[1]);
-                return b >= 16 && b <= 31;
-            } catch (Exception e) {
-                return false;
+        if (h.equals("localhost")) return true;
+        String[] p = h.split("\\.", -1);
+        if (p.length != 4) return false;
+        int[] o = new int[4];
+        for (int i = 0; i < 4; i++) {
+            if (p[i].isEmpty() || p[i].length() > 3) return false;
+            for (int j = 0; j < p[i].length(); j++) {
+                char c = p[i].charAt(j);
+                if (c < '0' || c > '9') return false;
             }
+            o[i] = Integer.parseInt(p[i]);
+            if (o[i] > 255) return false;
         }
-        return false;
+        return o[0] == 127 || o[0] == 10 || (o[0] == 192 && o[1] == 168) || (o[0] == 172 && o[1] >= 16 && o[1] <= 31);
     }
 
     private void onServerStopped() {
@@ -136,12 +195,12 @@ public class MainActivity extends Activity {
             // "Stop server" in the lobby or "Stop table" on back: start a fresh
             // table and go back to the main menu instead of leaving the app.
             loaded = false;
-            web.setVisibility(View.INVISIBLE);
+            if (web != null) web.setVisibility(View.INVISIBLE);
             status.setText("Starting a new table…");
             status.setVisibility(View.VISIBLE);
             main.postDelayed(this::startServer, 300);
         } else if (ServerService.error != null) {
-            status.setText(ServerService.error);
+            showError(ServerService.error);
         }
     }
 
@@ -159,7 +218,7 @@ public class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (!loaded) { super.onBackPressed(); return; }
+        if (!loaded || web == null) { super.onBackPressed(); return; }
         if (!onOwnTable()) {
             // at a friend's table: back to our own main menu
             new AlertDialog.Builder(this)
@@ -171,13 +230,18 @@ public class MainActivity extends Activity {
             return;
         }
         web.evaluateJavascript("(window.minimajNav && minimajNav.screen()) || ''", (v) -> {
+            if (isFinishing() || isDestroyed() || web == null) return; // the answer came too late
             String screen = v == null ? "" : v.replace("\"", "");
             if (screen.equals("home") || screen.isEmpty()) {
                 new AlertDialog.Builder(this)
                         .setTitle("Exit minimaj?")
                         .setPositiveButton("Exit", (d, w) -> {
                             ServerService.quitApp = true;
-                            stopService(new Intent(this, ServerService.class));
+                            // not running (it failed or already stopped): nothing will call back
+                            if (!stopService(new Intent(this, ServerService.class))) {
+                                ServerService.quitApp = false;
+                                finish();
+                            }
                         })
                         .setNegativeButton("Cancel", null)
                         .show();
@@ -186,14 +250,18 @@ public class MainActivity extends Activity {
             new AlertDialog.Builder(this)
                     .setTitle("Leave the table?")
                     .setMessage("Keep it running so friends can play on (a computer takes your seat), or stop it and disconnect everyone.")
-                    .setPositiveButton("Keep running", (d, w) -> web.evaluateJavascript("minimajNav.leave()", null))
+                    .setPositiveButton("Keep running", (d, w) -> leaveTable())
                     .setNeutralButton("Stop table", (d, w) -> {
-                        web.evaluateJavascript("minimajNav.leave()", null);
+                        leaveTable();
                         stopService(new Intent(this, ServerService.class)); // restarts, then main menu
                     })
                     .setNegativeButton("Cancel", null)
                     .show();
         });
+    }
+
+    private void leaveTable() {
+        if (web != null) web.evaluateJavascript("window.minimajNav && minimajNav.leave()", null);
     }
 
     @Override

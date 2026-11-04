@@ -3,6 +3,19 @@ import { tileType, isRed, countsOf, sortIds } from './tiles.js';
 import { shanten, waitsOf, evaluateWin, roundUp100 } from './hand.js';
 import { botTurn, botClaim } from './bot.js';
 
+// Tile types a player may not discard right after a call (kuikae): the called
+// type, and for a chi the tile at the other end of the run (calling 3 with 45
+// forbids 3 and 6).
+function kuikaeTypes(type, t, pair) {
+  if (type === 'pon') return [t];
+  if (type !== 'chi') return [];
+  const [a, b] = pair;
+  const out = [t];
+  if (t < a && b % 9 < 8) out.push(b + 1);
+  if (t > b && a % 9 > 0) out.push(a - 1);
+  return out;
+}
+
 const shuffle = (a, rng) => {
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
@@ -52,9 +65,12 @@ export class Game {
 
   startRound() {
     const tiles = shuffle([...Array(136).keys()], this.rng);
-    this.dead = tiles.slice(0, 14); // 0-4 dora ind, 5-9 ura ind, 10-13 rinshan
+    // dead wall: 0-4 dora indicators, 5-9 ura indicators, 10-13 rinshan tiles;
+    // live tiles that replace rinshan draws are appended after index 13
+    this.dead = tiles.slice(0, 14);
     this.live = tiles.slice(14);
     this.doraCount = 1;
+    this.doraPending = 0; // open kans whose dora is turned after the next discard
     this.kans = 0;
     this.rinshanUsed = 0;
     this.anyCall = false;
@@ -78,7 +94,23 @@ export class Game {
   }
 
   updateWaits(p) {
-    p.waits = p.hand.length % 3 === 1 ? waitsOf(countsOf(p.hand), p.melds.length) : [];
+    p.waits = p.hand.length % 3 === 1 ? this.liveWaits(p.hand, p.melds) : [];
+  }
+
+  // Waits of a 13-tile (3n+1) hand, leaving out tile types the player already
+  // holds all four of in hand and melds (karaten: no fifth tile exists).
+  liveWaits(hand, melds) {
+    const waits = waitsOf(countsOf(hand), melds.length);
+    if (!waits.length) return waits;
+    const own = countsOf(hand);
+    for (const m of melds) for (const id of m.tiles) own[tileType(id)]++;
+    return waits.filter((t) => own[t] < 4);
+  }
+
+  // Turn the kan dora of open kans declared earlier (after a discard or a new kan).
+  flipPendingDora() {
+    this.doraCount += this.doraPending;
+    this.doraPending = 0;
   }
 
   isFuriten(p) {
@@ -91,13 +123,12 @@ export class Game {
     let t;
     if (rinshan) {
       t = this.dead[10 + this.rinshanUsed++];
-      this.live.shift(); // keep the dead wall at 14 tiles
+      this.dead.push(this.live.shift()); // the last live tile joins the dead wall (it stays at 14)
     } else {
       t = this.live.pop();
     }
     p.hand.push(t);
     p.drawn = t;
-    p.furitenTemp = false;
     this.rinshan = rinshan;
     this.turn = seat;
     this.phase = 'discard';
@@ -142,9 +173,10 @@ export class Game {
       if (!o.discard.length) o.discard = p.hand.slice();
     }
     if (!this.mustDiscard && p.drawn != null) {
-      if (this.evalWin(seat, p.drawn, true)) o.tsumo = true;
+      const c = countsOf(p.hand);
+      // (the shanten test is a cheap filter before the full evaluation)
+      if (shanten(c, p.melds.length) === -1 && this.evalWin(seat, p.drawn, true)) o.tsumo = true;
       if (!p.riichi && this.live.length > 0 && this.kans < 4) {
-        const c = countsOf(p.hand);
         for (let t = 0; t < 34; t++) if (c[t] === 4) o.ankan.push(t);
         for (const m of p.melds) {
           const t = tileType(m.tiles[0]);
@@ -153,12 +185,20 @@ export class Game {
       }
       const closed = p.melds.every((m) => m.type === 'ankan');
       if (!p.riichi && closed && p.score >= 1000 && this.live.length >= 4) {
-        const c = countsOf(p.hand);
         const okTypes = new Set();
         for (let t = 0; t < 34; t++) {
           if (!c[t]) continue;
           c[t]--;
-          if (shanten(c, p.melds.length) === 0) okTypes.add(t);
+          // tenpai after the discard, with a wait that is not karaten (only
+          // possible with a closed kan or four of a kind in hand)
+          if (shanten(c, p.melds.length) === 0) {
+            if (!p.melds.length && !c.some((x) => x >= 4)) okTypes.add(t);
+            else {
+              const i = p.hand.findIndex((id) => tileType(id) === t);
+              const rest = p.hand.slice(0, i).concat(p.hand.slice(i + 1));
+              if (this.liveWaits(rest, p.melds).length) okTypes.add(t);
+            }
+          }
           c[t]++;
         }
         o.riichi = p.hand.filter((id) => okTypes.has(tileType(id)));
@@ -196,16 +236,7 @@ export class Game {
       return false;
     }
     if (this.phase === 'claim') {
-      const opt = this.claim.opts[seat];
-      if (!opt || this.claim.resp[seat]) return false;
-      if (a.type === 'pass') this.claim.resp[seat] = { type: 'pass' };
-      else if (a.type === 'ron' && opt.ron) this.claim.resp[seat] = { type: 'ron' };
-      else if (a.type === 'pon' && opt.pon) this.claim.resp[seat] = { type: 'pon' };
-      else if (a.type === 'kan' && opt.kan) this.claim.resp[seat] = { type: 'kan' };
-      else if (a.type === 'chi' && opt.chi && Array.isArray(a.tiles) &&
-        opt.chi.some((c) => c[0] === a.tiles[0] && c[1] === a.tiles[1])) {
-        this.claim.resp[seat] = { type: 'chi', tiles: [a.tiles[0], a.tiles[1]] };
-      } else return false;
+      if (!this.setClaimResponse(seat, a)) return false;
       this.tryResolveClaim();
       return true;
     }
@@ -215,6 +246,23 @@ export class Game {
       return true;
     }
     return false;
+  }
+
+  // Record a seat's answer to the open claim; false when it is not allowed.
+  setClaimResponse(seat, a) {
+    const opt = this.claim.opts[seat];
+    if (!opt || this.claim.resp[seat] || !a) return false;
+    let r;
+    if (a.type === 'pass') r = { type: 'pass' };
+    else if (a.type === 'ron' && opt.ron) r = { type: 'ron' };
+    else if (a.type === 'pon' && opt.pon) r = { type: 'pon' };
+    else if (a.type === 'kan' && opt.kan) r = { type: 'kan' };
+    else if (a.type === 'chi' && opt.chi && Array.isArray(a.tiles) &&
+      opt.chi.some((c) => c[0] === a.tiles[0] && c[1] === a.tiles[1])) {
+      r = { type: 'chi', tiles: [a.tiles[0], a.tiles[1]] };
+    } else return false;
+    this.claim.resp[seat] = r;
+    return true;
   }
 
   doDiscard(seat, id, riichi) {
@@ -229,8 +277,10 @@ export class Game {
     }
     p.drawn = null;
     p.kuikae = [];
+    p.furitenTemp = false; // temporary furiten lasts until the player's own discard
     this.mustDiscard = false;
     this.rinshan = false;
+    this.flipPendingDora();
     this.updateWaits(p);
     this.lastDiscard = { seat, tile: id };
     this.openClaims(seat, id, 'discard');
@@ -269,7 +319,15 @@ export class Game {
           if (n >= 2 && c[t - 2] && c[t - 1]) chi.push([t - 2, t - 1]);
           if (n >= 1 && n <= 7 && c[t - 1] && c[t + 1]) chi.push([t - 1, t + 1]);
           if (n <= 6 && c[t + 1] && c[t + 2]) chi.push([t + 1, t + 2]);
-          if (chi.length) o.chi = chi;
+          // no chi that would leave only kuikae-forbidden tiles to discard
+          const legal = chi.filter((pair) => {
+            c[pair[0]]--; c[pair[1]]--;
+            const bad = kuikaeTypes('chi', t, pair);
+            const ok = c.some((x, u) => x > 0 && !bad.includes(u));
+            c[pair[0]]++; c[pair[1]]++;
+            return ok;
+          });
+          if (legal.length) o.chi = legal;
         }
       }
       if (Object.keys(o).length) opts[s] = o;
@@ -331,18 +389,12 @@ export class Game {
     p.melds.push({ type, tiles: [...taken, c.tile], from: c.from, called: c.tile });
     this.breakIppatsu();
     this.announce(seat, { chi: 'Chi', pon: 'Pon', minkan: 'Kan' }[type]);
-    p.kuikae = [];
-    if (type === 'pon') p.kuikae = [t];
-    if (type === 'chi') {
-      const [a, b] = chiTiles;
-      p.kuikae = [t];
-      if (t < a && b % 9 < 8) p.kuikae.push(b + 1);
-      if (t > b && a % 9 > 0) p.kuikae.push(a - 1);
-    }
+    p.kuikae = kuikaeTypes(type, t, chiTiles);
     this.lastDiscard = null;
     if (type === 'minkan') {
       this.kans++;
-      this.doraCount++;
+      this.flipPendingDora();
+      this.doraPending++;
       this.drawTile(seat, true);
       return;
     }
@@ -357,7 +409,8 @@ export class Game {
     const tiles = this.takeFromHand(p, t, 4);
     p.melds.push({ type: 'ankan', tiles, from: seat });
     this.kans++;
-    this.doraCount++;
+    this.flipPendingDora();
+    this.doraCount++; // a closed kan turns its dora at once
     this.breakIppatsu();
     this.announce(seat, 'Kan');
     p.drawn = null;
@@ -372,13 +425,14 @@ export class Game {
     m.tiles.push(id);
     m.added = id;
     p.drawn = null;
+    this.flipPendingDora();
     this.announce(seat, 'Kan');
     this.openClaims(seat, id, 'chankan');
   }
 
   finishKakan(seat) {
     this.kans++;
-    this.doraCount++;
+    this.doraPending++;
     this.breakIppatsu();
     this.drawTile(seat, true);
   }
@@ -430,7 +484,8 @@ export class Game {
   exhaustiveDraw() {
     const tenpai = [];
     this.players.forEach((p, s) => {
-      if (shanten(countsOf(p.hand), p.melds.length) === 0) tenpai.push(s);
+      // tenpai needs a wait that still exists (a karaten wait is noten)
+      if (this.liveWaits(p.hand, p.melds).length) tenpai.push(s);
     });
     const deltas = [0, 0, 0, 0];
     const n = tenpai.length;
@@ -452,7 +507,10 @@ export class Game {
     let { round, kyoku, honba } = this;
     honba = renchan || draw ? honba + 1 : 0;
     if (!renchan) { kyoku++; if (kyoku === 4) { kyoku = 0; round++; } }
-    const over = this.players.some((p) => p.score < 0) || round >= this.length;
+    // all-last: a dealer who wins while in first place ends the game (agari-yame)
+    const allLast = this.round === this.length - 1 && this.kyoku === 3;
+    const dealerTop = allLast && renchan && !draw && this.standings()[0].seat === this.dealer;
+    const over = this.players.some((p) => p.score < 0) || round >= this.length || dealerTop;
     this.pendingNext = { round, kyoku, honba };
     this.result.gameOver = over;
     this.result.scores = this.players.map((p) => p.score);
@@ -523,12 +581,16 @@ export class Game {
     };
     if (this.phase === 'discard' && this.isBot(this.turn)) {
       const s = this.turn;
-      later(() => this.act(s, botTurn(this, s)), this.botDelay);
+      later(() => this.botAct(s), this.botDelay);
     } else if (this.phase === 'claim') {
       const pending = Object.keys(this.claim.opts).map(Number).filter((s) => !this.claim.resp[s] && this.isBot(s));
       if (pending.length) {
         later(() => {
-          for (const s of pending) this.claim.resp[s] = botClaim(this, s, this.claim.opts[s]);
+          for (const s of pending) {
+            let a = null;
+            try { a = botClaim(this, s, this.claim.opts[s]); } catch (e) { console.error('bot claim failed', e); }
+            if (!this.setClaimResponse(s, a)) this.setClaimResponse(s, { type: 'pass' });
+          }
           this.tryResolveClaim();
           this.changed();
         }, Math.min(this.botDelay, 300));
@@ -537,6 +599,18 @@ export class Game {
       const humans = this.players.some((p) => p.kind !== 'bot');
       if (!humans) later(() => { this.autoAdvance = true; this.advance(); this.changed(); }, this.botDelay * 4);
     }
+  }
+
+  // A bot's turn; never stalls the table: an illegal or failed choice falls
+  // back to discarding the drawn (or last allowed) tile.
+  botAct(s) {
+    let a = null;
+    try { a = botTurn(this, s); } catch (e) { console.error('bot turn failed', e); }
+    if (a && this.act(s, a)) return;
+    const o = this.turnOptions(s);
+    if (!o) return;
+    const p = this.players[s];
+    this.act(s, { type: 'discard', tile: o.discard.includes(p.drawn) ? p.drawn : o.discard[o.discard.length - 1] });
   }
 
   /* ---------------- per-seat view ---------------- */

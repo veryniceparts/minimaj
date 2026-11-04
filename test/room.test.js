@@ -1,7 +1,7 @@
 // Tests for js/room.js with a fake env and a manual clock.
 import assert from 'node:assert/strict';
 import { installFakeClock } from './fakeclock.js';
-import { createRoom, PROTO } from '../js/room.js';
+import { createRoom, PROTO, MIN_PROTO } from '../js/room.js';
 
 export function runRoomTests() {
   const clock = installFakeClock();
@@ -109,10 +109,17 @@ export function runRoomTests() {
     r.join('b2', 'B', 'cb');
     assert.equal(r.last('b2', 'view').view.seat, seatB);
     assert.equal(r.last('a', 'view').view.players[seatB].kind, 'human');
-    // duplicate tab: newest connection wins, old one is closed
+    // duplicate tab: newest connection wins; the old one is told why (so it
+    // stops instead of reconnecting and kicking the new one), then closed
     r.join('b3', 'B', 'cb');
-    assert.ok(r.closedIds.includes('b2'));
+    const kicked = r.last('b2', 'error');
+    assert.equal(kicked.fatal, true);
+    assert.equal(kicked.code, 'replaced');
     assert.equal(r.last('b3', 'view').view.seat, seatB);
+    r.msg('b2', { t: 'act', a: { type: 'pass' } }); // ignored, no throw
+    clock.advance(300);
+    assert.ok(r.closedIds.includes('b2'));
+    assert.equal(r.last('a', 'view').view.players[seatB].kind, 'human', 'closing the old tab keeps the seat human');
     // silence for >9 s -> closed, bot takes over (a keeps pinging)
     for (let i = 0; i < 11; i++) { r.msg('a', { t: 'ping', n: i }); clock.advance(1000); }
     assert.ok(r.closedIds.includes('b3'));
@@ -145,7 +152,14 @@ export function runRoomTests() {
     r.room.open('x', { hostOk: false });
     r.msg('x', { t: 'hello', name: 'X', cid: 'cx', ver: PROTO + 1 });
     assert.equal(r.last('x', 'error').fatal, true);
-    assert.ok(/reload/i.test(r.last('x', 'error').msg));
+    assert.ok(/older minimaj/i.test(r.last('x', 'error').msg), 'newer client: the host must update');
+    assert.equal(r.last('x', 'error').code, 'version');
+    r.room.open('y', { hostOk: false });
+    r.msg('y', { t: 'hello', name: 'Y', cid: 'cy', ver: MIN_PROTO - 1 });
+    assert.ok(/reload/i.test(r.last('y', 'error').msg) && /update|latest/i.test(r.last('y', 'error').msg), 'older client: reload or update the app');
+    r.room.open('z', { hostOk: false });
+    r.msg('z', { t: 'hello', name: 'Z', cid: 'cz' });
+    assert.equal(r.last('z', 'error').fatal, true, 'no version at all');
     clock.advance(299);
     assert.ok(!r.closedIds.includes('x'));
     clock.advance(1);
@@ -155,6 +169,23 @@ export function runRoomTests() {
     assert.equal(r.last('p5', 'error').fatal, true);
     assert.ok(/full/i.test(r.last('p5', 'error').msg));
     assert.equal(r.last('p1', 'lobby').lobby.members.length, 4);
+    r.room.destroy();
+  });
+
+  t('another tab of the host\'s browser cannot take the host\'s seat', () => {
+    const r = mk();
+    r.join('self', 'Hostie', 'same-cid', true);
+    r.join('p1', 'Hostie', 'same-cid', false); // joined the own room via the link in a 2nd tab
+    assert.equal(r.last('p1', 'error').code, 'duplicate');
+    assert.ok(!r.last('self', 'error'), 'host tab untouched');
+    clock.advance(300);
+    assert.ok(r.closedIds.includes('p1') && !r.closedIds.includes('self'));
+    assert.equal(r.last('self', 'lobby').lobby.members.length, 1);
+    assert.equal(r.last('self', 'lobby').lobby.isHost, true);
+    // the host's own reconnect (hostOk) still replaces its old connection
+    r.join('self2', 'Hostie', 'same-cid', true);
+    assert.equal(r.last('self2', 'lobby').lobby.isHost, true);
+    assert.equal(r.last('self', 'error').code, 'replaced');
     r.room.destroy();
   });
 

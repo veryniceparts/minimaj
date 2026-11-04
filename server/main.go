@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -88,6 +89,15 @@ func main() {
 	}
 	if len(srv.lanURLs) == 0 {
 		fmt.Println("  (no local network address found; other devices cannot join)")
+	} else {
+		fmt.Println("\n  Friends' devices must be on the same Wi-Fi (not a guest network) and")
+		fmt.Println("  your firewall must allow minimaj. When a device opens the page, a")
+		fmt.Println("  \"device ... opened the table page\" line appears below; if none")
+		fmt.Println("  does, the network or the firewall is blocking it.")
+		if runtime.GOOS == "windows" {
+			fmt.Println("  Windows: if your Wi-Fi is set to \"Public\", allow minimaj on public")
+			fmt.Println("  networks too (Windows Security > Firewall > Allow an app).")
+		}
 	}
 	if len(srv.lanURLs) > 0 && isTerminal(os.Stdout) {
 		// The loop is not running yet, so the runtime can be used directly.

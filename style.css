@@ -185,7 +185,7 @@ body {
   -webkit-text-size-adjust: 100%;
   touch-action: manipulation;
 }
-button, input, select { font: inherit; color: inherit; }
+button, input { font: inherit; color: inherit; }
 button { touch-action: manipulation; }
 [hidden] { display: none !important; }
 #app { height: 100%; overflow-x: hidden; }
@@ -304,7 +304,7 @@ button { touch-action: manipulation; }
 .card h2 small { font: 500 14px system-ui, sans-serif; color: var(--muted); margin-left: 6px; }
 .card h2.big { font-size: 26px; text-align: center; }
 .card label { display: block; margin: 16px 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
-.card input, .card select {
+.card input {
   display: block; width: 100%; margin-top: 6px; padding: 11px 14px;
   border: 0; border-radius: 14px; background: var(--bg-0); color: var(--text);
   box-shadow: inset 0 0 0 1.5px var(--line); outline: none;
@@ -327,11 +327,11 @@ button { touch-action: manipulation; }
 /* join a friend's table (app home) */
 .nearby { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
 .nearby li.muted { text-align: center; padding: 2px 0; }
-@media (max-height: 430px) { .nearby li:nth-child(n+3) { display: none; } .nearby .act { padding: 6px 12px; } }
 .nearby .act { width: 100%; justify-content: space-between; padding: 8px 12px; text-align: left; }
 .nearby .nm { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .nearby .nm small { font-weight: 500; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nearby .go { color: var(--accent); flex: none; }
+@media (max-height: 430px) { .nearby li:nth-child(n+3) { display: none; } .nearby .act { padding: 6px 12px; } }
 #tcode { text-transform: uppercase; }
 #tcode::placeholder { text-transform: none; }
 .tablecode { text-align: center; margin: 6px 0 2px; }
@@ -356,17 +356,19 @@ button { touch-action: manipulation; }
 /* QR shrinks on short screens so the lobby never needs scrolling */
 .lobby .qr { width: max(120px, min(200px, 64vw, calc(100vh - 505px))); }
 @supports (height: 100dvh) { .lobby .qr { width: max(120px, min(200px, 64vw, calc(100dvh - 505px))); } }
+/* …and gives up the room of the "Also: …" line under the link (a second LAN address) */
+.lobby:has(.urls) .qr { width: max(100px, min(200px, 64vw, calc(100vh - 529px))); }
+@supports (height: 100dvh) { .lobby:has(.urls) .qr { width: max(100px, min(200px, 64vw, calc(100dvh - 529px))); } }
 .seg { display: flex; gap: 6px; background: var(--bg-0); padding: 4px; border-radius: 999px; margin-top: 6px; }
 .chip { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 8px 10px; border-radius: 999px; font-weight: 700; cursor: pointer; }
 .chip.on { background: var(--bg-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 details { margin-top: 18px; font-size: 14px; color: var(--muted); }
 summary { cursor: pointer; font-weight: 600; }
-.foot { margin-top: 14px; font-size: 12px; color: var(--muted); text-align: center; opacity: .7; }
 .spin { width: 34px; height: 34px; margin: 18px auto; border-radius: 50%; border: 4px solid var(--bg-2); border-top-color: var(--accent); animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- table ---------- */
-#app.game { display: flex; flex-direction: column; }
+#app.game { display: flex; flex-direction: column; overflow: hidden; overflow: clip; }
 #table { flex: 1; display: grid; place-items: center; min-height: 0; padding-top: 6px; }
 @media (max-aspect-ratio: 4/5) { #table { align-items: center; padding-bottom: 4px; } }
 #wrap { position: relative; width: var(--S); height: var(--S); }
@@ -598,7 +600,6 @@ summary { cursor: pointer; font-weight: 600; }
 #modal .card { max-height: 100%; overflow: auto; overscroll-behavior: contain; width: min(520px, 100%); padding: 20px; }
 #modal .tile { --w: min(28px, calc((100vw - 60px) / 15)); }
 .res h2 { margin: 0 0 6px; }
-.res .go { position: sticky; bottom: 0; } /* safety net only: the card is sized to fit without scrolling */
 .res .wait { margin: 12px 0 0; text-align: center; }
 .badge { display: inline-block; padding: .12em .6em; border-radius: 999px; font-size: .8em; vertical-align: .08em; background: var(--ok); color: var(--ok-ink); }
 .rhand { display: flex; flex-wrap: wrap; align-items: flex-end; row-gap: 6px; margin: 8px 0; }
@@ -619,6 +620,8 @@ summary { cursor: pointer; font-weight: 600; }
 .scores tr.me td { background: rgba(var(--accent-rgb), .08); }
 .scores .w { font-family: var(--cjk); color: var(--muted); width: 2em; }
 .scores .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* names take the free width and end in "…" rather than wrap (the card must not grow) */
+.scores .nm { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pos { color: var(--ok); font-weight: 700; }
 .neg { color: var(--bad); font-weight: 700; }
 .final .rank { width: 2.4em; font: 800 16px var(--round); color: var(--muted); }
@@ -627,7 +630,7 @@ summary { cursor: pointer; font-weight: 600; }
 /* close the result card to look at the table (every hand revealed); reopen from the action bar */
 .res > .gorow { grid-area: go; align-self: end; display: flex; align-items: stretch; gap: 8px; margin-top: 10px; position: sticky; bottom: 0; }
 .res .gorow > .act.act { margin: 0; }
-.res .gorow > .go { flex: 1 1 auto; position: static; }
+.res .gorow > .go { flex: 1 1 auto; }
 .res .gorow > .wait { flex: 1 1 auto; margin: 0; align-self: center; }
 .res .gorow > .peekbtn { flex: none; padding-left: 16px; padding-right: 16px; background: var(--bg-1); }
 .res.over .btns > .peekbtn { background: var(--bg-1); }
@@ -681,6 +684,8 @@ summary { cursor: pointer; font-weight: 600; }
   .card.lobby .c1 > p { margin: 8px 0; font-size: 14px; }
   .lobby .qr { width: max(110px, min(200px, calc(100vh - 220px))); }
   @supports (height: 100dvh) { .lobby .qr { width: max(110px, min(200px, calc(100dvh - 220px))); } }
+  .lobby:has(.urls) .qr { width: max(100px, min(200px, calc(100vh - 244px))); }
+  @supports (height: 100dvh) { .lobby:has(.urls) .qr { width: max(100px, min(200px, calc(100dvh - 244px))); } }
   .lobby .urls { margin-top: 4px; }
 
   #modal { padding: 8px 12px; }
@@ -705,7 +710,6 @@ summary { cursor: pointer; font-weight: 600; }
   .res > .yaku { grid-area: yk; margin: 0; }
   .res > .total { grid-area: tot; align-self: center; text-align: right; margin: 0; font-size: 16px; }
   .res > .scores { grid-area: sc; margin: 0 0 4px; }
-  .res > .go, .res > .wait { grid-area: go; align-self: end; }
   .res.draw > .scores { margin-top: 8px; }
   .res .scores td { padding: 4px 8px; }
   .res .act.wide { margin-top: 8px; padding: 11px; }
@@ -740,8 +744,10 @@ summary { cursor: pointer; font-weight: 600; }
 }
 #menubtn svg { width: 20px; height: 20px; }
 #menu {
+  --ring: var(--accent);
   position: fixed; top: calc(56px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); z-index: 26;
   width: 240px; max-width: calc(100vw - 20px); padding: 8px; border-radius: 18px;
+  max-height: calc(100% - 66px - env(safe-area-inset-top)); overflow-y: auto; overscroll-behavior: contain;
   background: var(--surf-tex), var(--bg-1); box-shadow: inset 0 0 0 1px var(--line), 0 18px 44px rgba(var(--sh), .5);
   animation: scalein .2s var(--ease-out); transform-origin: top right;
 }
@@ -757,7 +763,6 @@ summary { cursor: pointer; font-weight: 600; }
 #menu .on .sw::after { transform: translateX(14px); background: var(--ok); }
 #menu hr { border: 0; height: 1px; background: var(--line); margin: 6px 4px; }
 #menu .leave { color: var(--bad); }
-#menu { --ring: var(--accent); max-height: calc(100% - 66px - env(safe-area-inset-top)); overflow-y: auto; overscroll-behavior: contain; }
 #menu .mtheme { margin-top: 6px; padding: 8px 4px 2px; border-top: 1px solid var(--line); }
 #menu .mlabel { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 4px 8px; }
 .thgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

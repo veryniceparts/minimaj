@@ -103,3 +103,92 @@ func TestHTTP(t *testing.T) {
 	}
 	r.Body.Close()
 }
+
+func TestInfoPreflight(t *testing.T) {
+	ts, _ := startTestServer(t)
+	req, _ := http.NewRequest("OPTIONS", ts.URL+"/info.json", nil)
+	req.Header.Set("Origin", "http://192.168.1.9:7777")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Private-Network", "true")
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != 204 || r.Header.Get("Access-Control-Allow-Origin") != "*" || r.Header.Get("Access-Control-Allow-Private-Network") != "true" {
+		t.Fatalf("preflight: %d %v", r.StatusCode, r.Header)
+	}
+	r, err = http.Get(ts.URL + "/info.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.Header.Get("Access-Control-Allow-Private-Network") != "true" {
+		t.Fatalf("info headers %v", r.Header)
+	}
+}
+
+// Two tabs of one browser share a client id. The newer one wins and the older
+// one is told why (a fatal error), so it does not reconnect and kick the newer
+// one back: they used to take turns kicking each other.
+func TestDuplicateTabIsToldWhy(t *testing.T) {
+	ts, _ := startTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	dial := func() *websocket.Conn {
+		c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+"/ws", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	hello := func(c *websocket.Conn) {
+		b, _ := json.Marshal(map[string]any{"t": "hello", "name": "Ann", "cid": "same", "ver": 1, "host": false})
+		if err := c.Write(ctx, websocket.MessageText, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recv := func(c *websocket.Conn, want string) map[string]any {
+		for {
+			_, b, err := c.Read(ctx)
+			if err != nil {
+				t.Fatalf("waiting for %s: %v", want, err)
+			}
+			var m map[string]any
+			_ = json.Unmarshal(b, &m)
+			if m["t"] == want {
+				return m
+			}
+		}
+	}
+	a := dial()
+	defer a.CloseNow()
+	hello(a)
+	recv(a, "lobby")
+	b := dial()
+	defer b.CloseNow()
+	hello(b)
+	recv(b, "lobby")
+	e := recv(a, "error")
+	if e["fatal"] != true || e["code"] != "replaced" {
+		t.Fatalf("old tab: %v", e)
+	}
+	// and the old socket is closed by the server shortly after
+	for {
+		if _, _, err := a.Read(ctx); err != nil {
+			break
+		}
+	}
+}
+
+func TestWebSocketWrongOriginRefused(t *testing.T) {
+	ts, _ := startTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	h := http.Header{}
+	h.Set("Origin", "https://evil.example")
+	if c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+"/ws", &websocket.DialOptions{HTTPHeader: h}); err == nil {
+		c.CloseNow()
+		t.Fatal("cross-site websocket should be refused")
+	}
+}

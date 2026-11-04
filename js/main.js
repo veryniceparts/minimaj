@@ -40,11 +40,14 @@ let net = null;       // session module (js/net.js or js/dev-fake.js)
 let info = null;      // /info.json when served by the minimaj app, else null
 let qr = null;        // js/qr.js module, if available
 let session = null;
+let sessionToken = null; // identifies the live session's callbacks (see connect)
 let screen = 'home';
 let table = null;
 let view = null;
 let prev = null;      // previous view (for sounds)
 const ui = { riichiMode: false, selected: null, autoKey: null };
+let sent = null;      // { view, t }: the action already sent for this view (no double submits)
+let startPending = false; // lobby Start pressed, game not shown yet
 let pointerType = 'mouse';
 
 /* ---------------- toast / banner ---------------- */
@@ -114,14 +117,20 @@ function setupMenu() {
   btn.innerHTML = ICON;
   btn.hidden = false; // on every screen, so the theme can be changed anytime
   btn.onclick = (e) => { e.stopPropagation(); toggleMenu(); };
-  document.addEventListener('click', (e) => { if (!$('menu').hidden && !e.target.closest('#menu')) $('menu').hidden = true; });
+  document.addEventListener('click', (e) => { if (!$('menu').hidden && !e.target.closest('#menu')) closeMenu(); });
+}
+
+function closeMenu() {
+  $('menu').hidden = true;
+  $('menubtn').setAttribute('aria-expanded', 'false');
 }
 
 function toggleMenu(force) {
   const m = $('menu');
   const show = force ?? m.hidden;
-  if (!show) { m.hidden = true; return; }
-  const sw = (k, label) => `<button data-pref="${k}" class="${prefs[k] ? 'on' : ''}">${label}<span class="sw"></span></button>`;
+  if (!show) { closeMenu(); return; }
+  $('menubtn').setAttribute('aria-expanded', 'true');
+  const sw = (k, label) => `<button data-pref="${k}" class="${prefs[k] ? 'on' : ''}" aria-pressed="${prefs[k]}">${label}<span class="sw"></span></button>`;
   const swatch = ([id, short, full]) => `<button class="thm${id === theme ? ' on' : ''}" data-theme="${id}" role="radio" aria-checked="${id === theme}" aria-label="${full}" title="${full}">`
     + `<span class="sf"><i class="b"></i><i class="f"></i><i class="a"></i></span><span class="nm">${short}</span></button>`;
   m.innerHTML = '<div class="mopts">' + sw('sound', 'Sound')
@@ -145,40 +154,53 @@ function toggleMenu(force) {
       prefs[k] = !prefs[k];
       store.set(`minimaj-${k}`, prefs[k] ? '1' : '0');
       b.classList.toggle('on', prefs[k]);
+      b.setAttribute('aria-pressed', prefs[k]);
       if (k === 'sound' && prefs.sound) sfx.tick();
     } else if (b.dataset.menu === 'mannum') {
       prefs.mankanji = !prefs.mankanji;
       store.set('minimaj-mankanji', prefs.mankanji ? '1' : '0');
       b.querySelector('.val').textContent = prefs.mankanji ? '一二三' : '1 2 3';
       applyManNumerals();
-    } else if (b.dataset.menu === 'leave') { m.hidden = true; leave(); }
+    } else if (b.dataset.menu === 'leave') { closeMenu(); leave(); }
     else if (b.dataset.menu === 'stop') {
       // two taps, like the lobby button: everyone at this table is disconnected
       if (!stopArmedMenu) { stopArmedMenu = true; b.textContent = 'Tap again to stop the server'; return; }
-      m.hidden = true;
-      auto.clear();
-      fetch('/api/quit', { method: 'POST' }).catch(() => {}).finally(showStopped);
+      closeMenu();
+      stopServer();
     }
   };
+}
+
+// Shut the app's table down (only offered on the device running it). On Android
+// the app then starts a fresh table and reloads this page at the main menu.
+function stopServer() {
+  auto.clear(); // the reloaded page must not rejoin the old table
+  fetch('/api/quit', { method: 'POST' }).catch(() => {}).finally(showStopped);
 }
 
 /* ---------------- screens ---------------- */
 
 function setScreen(name, cls = 'home') {
   screen = name;
-  table = null;
-  if (name !== 'game') { view = null; prev = null; }
+  if (table) { table.destroy(); table = null; }
+  view = null;
+  prev = null;
+  ui.riichiMode = false;
+  ui.selected = null;
+  startPending = false;
   app.className = cls;
   app.onclick = null;
-  $('menu').hidden = true;
+  closeMenu();
   document.title = 'minimaj';
 }
 
 const logo = () => `<h1 class="logo"><span class="tiles">${tileHTML(4 * 33)}${tileHTML(52)}${tileHTML(4 * 27)}</span>minimaj</h1>`;
 
 function endSession() {
-  if (session) { try { session.close(); } catch { /* ignore */ } }
+  const s = session;
   session = null;
+  sessionToken = null; // first: its last callbacks (onConn 'closed') are then ignored
+  if (s) { try { s.close(); } catch { /* ignore */ } }
   banner('');
 }
 
@@ -203,12 +225,17 @@ function getName(el) {
   return n;
 }
 
+const nameFieldHTML = () => `<label>Your name<input id="name" maxlength="16" autocomplete="nickname" value="${esc(store.get('minimaj-name', ''))}" placeholder="Name" enterkeyhint="go"></label>`;
+const errorHTML = (err) => (err ? `<p class="err" role="alert">${esc(err)}</p>` : '');
+// Focus a field on the home screens only with a mouse/trackpad: on a phone it
+// would pop the keyboard up over the menu every time you come back to it.
+const autoFocus = (el) => { if (!FAKE && el && matchMedia('(pointer: fine)').matches) el.focus(); };
+
 function showHome(err) {
   endSession();
   setScreen('home');
-  const name = esc(store.get('minimaj-name', ''));
-  const errHTML = err ? `<p class="err">${esc(err)}</p>` : '';
-  const nameField = `<label>Your name<input id="name" maxlength="16" autocomplete="nickname" value="${name}" placeholder="Name" enterkeyhint="go"></label>`;
+  const nameField = nameFieldHTML();
+  const errHTML = errorHTML(err);
   if (info) {
     // On your own device you can host your table or join a friend's table.
     const own = !!info.hostOk;
@@ -235,7 +262,7 @@ function showHome(err) {
       setupJoinFriend(nameEl);
       $('online').onclick = () => { getName(nameEl); showOnline(); };
     }
-    if (!FAKE) nameEl.focus();
+    autoFocus(nameEl);
     return;
   }
   showOnline(err);
@@ -251,9 +278,8 @@ function showOnline(err) {
   endSession();
   setScreen('home');
   const inApp = !!info;
-  const name = esc(store.get('minimaj-name', ''));
-  const errHTML = err ? `<p class="err">${esc(err)}</p>` : '';
-  const nameField = `<label>Your name<input id="name" maxlength="16" autocomplete="nickname" value="${name}" placeholder="Name" enterkeyhint="go"></label>`;
+  const nameField = nameFieldHTML();
+  const errHTML = errorHTML(err);
   const code = !inApp && net && net.normCode ? net.normCode(location.hash.slice(1)) : '';
   app.innerHTML = `<div class="card split"><div class="c1">${logo()}
     <p class="muted">${inApp
@@ -263,7 +289,7 @@ function showOnline(err) {
     <button id="create" class="act hot wide">Create room</button>
     <div class="or">or join a friend</div>
     <div class="joinrow">
-      <input id="code" maxlength="5" placeholder="CODE" value="${esc(code)}" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="go">
+      <input id="code" maxlength="${inApp ? 5 : 21}" placeholder="CODE" value="${esc(code)}" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="${inApp ? 'Room code' : 'Room code, or a minimaj app\'s table code or address'}">
       <button id="joinc" class="act">Join</button>
     </div>
     ${inApp ? '<button id="back" class="act ghost wide">Back</button>' : ''}
@@ -275,15 +301,28 @@ function showOnline(err) {
   const extra = inApp ? { publicUrl: PUBLIC_URL } : {};
   $('create').onclick = () => connect({ mode: 'online', name: getName(nameEl), create: true, ...extra });
   const join = () => {
-    const c = net.normCode(codeEl.value);
-    if (c.length !== 5) { codeEl.focus(); toast('Enter the 5-character room code'); return; }
+    const raw = codeEl.value.trim();
+    // web version: a minimaj app's table code (4 or 6 characters) or address
+    // goes to that table's own page; 5 characters are an online room
+    if (!inApp && (/[.:]/.test(raw) || /^[a-z0-9]{4}$|^[a-z0-9]{6}$/i.test(raw.replace(/[\s-]/g, '')))) {
+      const url = parseTableInput(raw);
+      if (url) { goToTable(url, nameEl); return; }
+    }
+    const c = net.normCode(raw);
+    const problem = net.codeProblem ? net.codeProblem(c) : c.length !== 5 ? 'Enter the 5-character room code.' : null;
+    if (problem) { codeEl.focus(); toast(problem); return; }
     connect({ mode: 'online', name: getName(nameEl), code: c, ...extra });
   };
   if (inApp) $('back').onclick = () => showHome();
   $('joinc').onclick = join;
   codeEl.onkeydown = (e) => { if (e.key === 'Enter') join(); };
-  codeEl.oninput = () => { codeEl.value = net.normCode(codeEl.value); };
-  if (!FAKE) (code && !nameEl.value ? nameEl : code ? $('joinc') : nameEl).focus();
+  codeEl.oninput = () => {
+    const v = codeEl.value;
+    // an address (web version only) is left as typed; codes are cleaned up
+    if (inApp) codeEl.value = net.normCode(v);
+    else if (!/[.:/]/.test(v)) codeEl.value = v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  };
+  autoFocus(code && !nameEl.value ? nameEl : code ? $('joinc') : nameEl);
 }
 
 // Joining another minimaj app on the same Wi-Fi: go to that table's page and
@@ -293,7 +332,11 @@ function goToTable(url, nameEl) {
   location.href = `${url}/?n=${encodeURIComponent(name)}&go=1`;
 }
 
-let scanRun = 0;
+// Tables nearby: one scan at a time, results kept for when the home screen is
+// shown again (Online room -> Back, Leave), so it does not probe the /24 again.
+const scan = { busy: false, at: 0, found: [] };
+const RESCAN_MS = 20000;
+
 function setupJoinFriend(nameEl) {
   const codeEl = $('tcode');
   const join = () => {
@@ -303,26 +346,44 @@ function setupJoinFriend(nameEl) {
   };
   $('joint').onclick = join;
   codeEl.onkeydown = (e) => { if (e.key === 'Enter') join(); };
-
-  const list = $('nearby');
-  const run = ++scanRun;
-  const seen = new Set();
-  scanTables(info.lanUrls || [], ({ url, code, info: ti }) => {
-    if (run !== scanRun || !list.isConnected || seen.has(url)) return;
-    seen.add(url);
-    const t = ti.table || {};
-    const who = t.host ? `${esc(t.host)}'s table` : 'Table';
-    const detail = [t.players ? `${t.players} player${t.players === 1 ? '' : 's'}` : 'empty', t.playing ? 'playing' : 'in lobby'].join(' · ');
-    const li = document.createElement('li');
-    li.innerHTML = `<button class="act" data-url="${esc(url)}"><span class="nm">${who}<small>${detail}${code ? ` · ${esc(code)}` : ''}</small></span><span class="go">Join</span></button>`;
-    li.querySelector('button').onclick = () => goToTable(url, nameEl);
-    const msg = $('scanmsg');
-    if (msg) msg.remove();
-    if (list.children.length < 3) list.appendChild(li);
-  }).then(() => {
-    const msg = $('scanmsg');
-    if (run === scanRun && msg) msg.textContent = (info.lanUrls || []).length ? 'No tables found nearby — ask for the table code.' : 'Not on Wi-Fi — connect to join friends.';
+  const fresh = scan.busy || Date.now() - scan.at < RESCAN_MS;
+  if (!fresh) scan.busy = true;
+  renderNearby();
+  if (fresh) return;
+  const next = [];
+  scanTables(info.lanUrls || [], (hit) => {
+    if (next.some((h) => h.url === hit.url)) return;
+    next.push(hit);
+    if (!scan.found.some((h) => h.url === hit.url)) { scan.found.push(hit); renderNearby(); }
+  }).catch(() => {}).finally(() => {
+    scan.busy = false;
+    scan.at = Date.now();
+    scan.found = next; // tables that went away drop out
+    renderNearby();
   });
+}
+
+// The found tables (at most 3) into the home screen's list, if it is showing.
+// Everything in /info.json comes from another device: escape and coerce it all.
+function renderNearby() {
+  const list = $('nearby');
+  if (!list) return;
+  if (!scan.found.length) {
+    const msg = scan.busy ? 'Looking for tables nearby…'
+      : (info.lanUrls || []).length ? 'No tables found nearby — ask for the table code.' : 'Not on Wi-Fi — connect to join friends.';
+    list.innerHTML = `<li class="muted small" id="scanmsg">${msg}</li>`;
+    return;
+  }
+  list.replaceChildren(...scan.found.slice(0, 3).map(({ url, code, info: ti }) => {
+    const t = (ti && ti.table) || {};
+    const host = t.host ? String(t.host).slice(0, 16) : '';
+    const n = Math.max(0, Math.floor(+t.players) || 0);
+    const detail = [n ? `${n} player${n === 1 ? '' : 's'}` : 'empty', t.playing ? 'playing' : 'in lobby'].join(' · ');
+    const li = document.createElement('li');
+    li.innerHTML = `<button class="act"><span class="nm">${host ? `${esc(host)}'s table` : 'Table'}<small>${detail}${code ? ` · ${esc(code)}` : ''}</small></span><span class="go">Join</span></button>`;
+    li.querySelector('button').onclick = () => goToTable(url, $('name'));
+    return li;
+  }));
 }
 
 const howTo = () => `<details><summary>How to play</summary>
@@ -337,41 +398,57 @@ function showConnecting(text) {
 }
 
 function showStopped() {
+  auto.clear();
   endSession();
   setScreen('stopped');
   app.innerHTML = `<div class="card">${logo()}<h2>Server stopped</h2>
     <p class="muted">The minimaj table has been shut down. You can close this window.</p></div>`;
 }
 
+// Each session gets its own handlers, bound to a token: callbacks from a session
+// that was already left or replaced (late timers, a reconnect racing a Leave)
+// are dropped instead of drawing over the current screen.
 function connect(opts) {
   if (!net || !net.createSession) { showHome('The networking module did not load. Please reload the page.'); return; }
+  endSession();
   showConnecting(opts.mode === 'lan' ? 'Joining the table…' : opts.create ? 'Opening a room…' : `Connecting to room ${opts.code}…`);
+  const token = {};
+  sessionToken = token;
   try {
-    session = net.createSession(opts, handlers);
+    const s = net.createSession(opts, sessionHandlers(token, opts));
+    if (sessionToken !== token) { try { s.close(); } catch { /* ignore */ } return; } // failed while starting
+    session = s;
     auto.save(opts);
   } catch (e) {
     console.error(e);
+    sessionToken = null;
     showHome(e.message || 'Could not connect');
   }
 }
 
-const handlers = {
-  onLobby: (l) => { if (session) showLobby(l); },
-  onView: (v) => { if (session) renderGame(v); },
-  onError: (msg, fatal) => {
-    if (!fatal) { toast(msg); return; }
-    auto.clear();
-    if (info && session && session.mode === 'online') showOnline(msg); // app: stay on the online screen
-    else showHome(msg);
-  },
-  onStatus: (text) => { if (text) toast(text); },
-  onConn: (state) => {
-    if (state === 'reconnecting') banner('Reconnecting…');
-    else if (state === 'connecting' && (screen === 'lobby' || screen === 'game')) banner('Connecting…');
-    else if (state === 'closed' && session && screen !== 'home') banner('Disconnected');
-    else banner('');
-  },
-};
+function sessionHandlers(token, opts) {
+  const live = () => sessionToken === token;
+  return {
+    onLobby: (l) => { if (live()) showLobby(l); },
+    onView: (v) => { if (live()) renderGame(v); },
+    onError: (msg, fatal) => {
+      if (!live()) return;
+      if (!fatal) { toast(msg); return; }
+      sessionToken = null;
+      auto.clear();
+      if (info && opts.mode === 'online') showOnline(msg); // app: stay on the online screen
+      else showHome(msg);
+    },
+    onStatus: (text) => { if (live() && text) toast(text); },
+    onConn: (state) => {
+      if (!live()) return;
+      if (state === 'reconnecting') banner('Reconnecting…');
+      else if (state === 'connecting' && (screen === 'lobby' || screen === 'game')) banner('Connecting…');
+      else if (state === 'closed' && screen !== 'home') banner('Disconnected');
+      else banner('');
+    },
+  };
+}
 
 /* ---------------- lobby ---------------- */
 
@@ -392,7 +469,8 @@ function showLobby(l) {
     const m = l.members[i];
     if (!m) return '<li class="cpu"><span class="av">?</span><span class="nm">Computer<small>open seat</small></span></li>';
     const tags = [m.host && 'host', m.you && 'you', !m.connected && 'offline'].filter(Boolean).join(' · ');
-    return `<li class="${m.connected ? '' : 'off'}"><span class="av">${esc((m.name || '?').slice(0, 1).toUpperCase())}</span><span class="nm">${esc(m.name)}${tags ? `<small>${tags}</small>` : ''}</span></li>`;
+    const initial = [...String(m.name || '?')][0].toUpperCase(); // whole code point (emoji names)
+    return `<li class="${m.connected ? '' : 'off'}"><span class="av">${esc(initial)}</span><span class="nm">${esc(m.name)}${tags ? `<small>${tags}</small>` : ''}</span></li>`;
   }).join('');
   const others = l.mode === 'lan' ? (l.lanUrls || []).filter((u) => u !== url) : [];
   const n = l.members.length;
@@ -416,7 +494,7 @@ function showLobby(l) {
         <button class="chip${len === 1 ? ' on' : ''}" data-len="1" title="East round only (tonpuu)">Short · 東</button>
         <button class="chip${len === 2 ? ' on' : ''}" data-len="2" title="East and South rounds (hanchan)">Long · 東南</button>
       </div></div>
-      <button class="act hot wide" id="start">Start${n < 4 ? ` · ${4 - n} computer${n === 3 ? '' : 's'}` : ''}</button>`
+      <button class="act hot wide" id="start"${startPending ? ' disabled' : ''}>Start${n < 4 ? ` · ${4 - n} computer${n === 3 ? '' : 's'}` : ''}</button>`
     : `<p class="muted" style="text-align:center">${len === 2 ? 'Long game (東南)' : 'Short game (東)'} · waiting for the host to start…</p>`}
     <div class="btnrow"><button class="act ghost wide" id="leave">Leave</button>
     ${l.isHost && l.mode === 'lan' && info ? `<button class="act danger wide${stopArmed ? ' armed' : ''}" id="stop">${stopArmed ? 'Tap again to stop' : 'Stop server'}</button>` : ''}</div></div>
@@ -428,14 +506,22 @@ function showLobby(l) {
   }
   $('leave').onclick = leave;
   if (l.isHost) {
-    $('len').onclick = (e) => { const b = e.target.closest('[data-len]'); if (b) session.setSettings({ length: +b.dataset.len }); };
-    $('start').onclick = (e) => { e.target.disabled = true; session.start(); };
+    $('len').onclick = (e) => { const b = e.target.closest('[data-len]'); if (b && session) session.setSettings({ length: +b.dataset.len }); };
+    $('start').onclick = (e) => {
+      if (startPending || !session) return;
+      // stays disabled across lobby updates until the game shows (or a few seconds pass)
+      startPending = true;
+      e.currentTarget.disabled = true;
+      session.start();
+      const s = session;
+      setTimeout(() => { if (session === s && screen === 'lobby' && startPending) { startPending = false; const b = $('start'); if (b) b.disabled = false; } }, 4000);
+    };
   }
   const stop = $('stop');
   if (stop) stop.onclick = () => {
     if (!stopArmed) { stopArmed = true; stop.classList.add('armed'); stop.textContent = 'Tap again to stop'; return; }
     stop.disabled = true;
-    fetch('/api/quit', { method: 'POST' }).catch(() => {}).finally(showStopped);
+    stopServer();
   };
 }
 
@@ -459,7 +545,13 @@ async function copyText(text, input) {
 function act(a) {
   ui.riichiMode = false;
   ui.selected = null;
-  if (session) session.act(a);
+  if (!session) return;
+  // one action per state: a double tap (or the riichi auto-discard racing a tap)
+  // must not send a second discard before the server's answer arrives
+  const now = Date.now();
+  if (sent && sent.view === view && now - sent.t < 1500) return;
+  sent = { view, t: now };
+  session.act(a);
 }
 
 function onGameClick(e) {
@@ -467,7 +559,7 @@ function onGameClick(e) {
   if (btn) {
     const a = JSON.parse(btn.dataset.act);
     if (a.type === 'ui-riichi') { ui.riichiMode = !ui.riichiMode; ui.selected = null; table.update(view, ui); return; }
-    if (a.type === 'ui-lobby') { session.backToLobby(); return; }
+    if (a.type === 'ui-lobby') { if (session) session.backToLobby(); return; }
     if (a.type === 'ui-leave') { leave(); return; }
     act(a);
     return;
@@ -533,8 +625,8 @@ function feedback(v, p, event) {
 window.addEventListener('pointerdown', (e) => { pointerType = e.pointerType || 'mouse'; }, { capture: true, passive: true });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (!$('menu').hidden) { $('menu').hidden = true; return; }
-    if (view && ui.riichiMode) { ui.riichiMode = false; table.update(view, ui); }
+    if (!$('menu').hidden) { closeMenu(); $('menubtn').focus({ preventScroll: true }); return; }
+    if (view && table && ui.riichiMode) { ui.riichiMode = false; table.update(view, ui); }
   }
 });
 window.addEventListener('beforeunload', (e) => {
@@ -542,7 +634,12 @@ window.addEventListener('beforeunload', (e) => {
     e.preventDefault(); e.returnValue = '';
   }
 });
-window.addEventListener('hashchange', () => { if (screen === 'home' && !info) showHome(); });
+window.addEventListener('hashchange', () => {
+  if (screen !== 'home' || info) return;
+  const nameEl = $('name');
+  if (nameEl && nameEl.value.trim()) getName(nameEl); // keep what was typed
+  showHome();
+});
 
 /* ---------------- boot ---------------- */
 
@@ -568,9 +665,10 @@ async function boot() {
     return;
   }
   showHome(loadErr);
-  const prev = !loadErr && !FAKE ? auto.load() : null;
-  // online rooms work in the browser and inside the app; LAN tables only in the app
-  if (prev && prev.name && (prev.mode === 'lan' ? !!info : true)) connect(prev.mode === 'lan' ? { ...prev, info } : prev);
+  // a reload at a table rejoins it. Online rooms work in the browser and inside
+  // the app; LAN tables only in the app
+  const saved = !loadErr && !FAKE ? auto.load() : null;
+  if (saved && saved.name && (saved.mode === 'lan' ? !!info : true)) connect(saved.mode === 'lan' ? { ...saved, info } : saved);
   if (FAKE && params.has('auto')) $(info ? 'join' : 'create').click();
 }
 // Used by the Android app's back button: which screen is showing, and leave the table.

@@ -75,6 +75,10 @@ shows your waits when you are tenpai and warns you when you are furiten. The
 - Full fu calculation, mangan to kazoe-yakuman limits, honba, riichi sticks, and 3000-point tenpai payments at an exhaustive draw
 - East round or half game (East + South); the game also ends when someone drops below zero
 
+Kan dora: a closed kan turns the new indicator at once; an open or added kan
+turns it after the next discard. All-last: the game ends when the dealer wins
+the final hand while in first place.
+
 Left out to keep it small: abortive draws, nagashi mangan, double ron, pao, and declaring a closed kan after riichi.
 
 ## How it works
@@ -140,4 +144,8 @@ put the `GOOS=android GOARCH=arm64` binary at
 - The app's pages are plain `http://`, which browsers allow for local addresses.
   Use the link or QR code the app shows. A copy of the site on GitHub Pages
   cannot reach a LAN app because browsers block that mix.
-- Online rooms need WebRTC. Some strict networks block it; try another network.
+- Online rooms need WebRTC. Players on mobile data or strict office, school or
+  hotel Wi-Fi usually need a **TURN relay**. PeerJS's free one was shut down in
+  2023, so add your own in `js/config.js` (for example a free Metered account:
+  set `iceUrl` to its credentials URL). Without one, those players see "your
+  network blocks direct connections" after about 40 s.

@@ -3,9 +3,8 @@ import {
   evaluateWin, shanten, shantenStd, shantenChiitoi, shantenKokushi, waitsOf, forEachImprovingTile,
 } from '../js/hand.js';
 import { countsOfTypes } from '../js/tiles.js';
-import { Game } from '../js/game.js';
 import { shantenStdRef } from './shanten-ref.js';
-import { installFakeClock } from './fakeclock.js';
+import { runEngineTests } from './engine.test.js';
 import { runRoomTests } from './room.test.js';
 import { runQrTests } from './qr.test.js';
 import { runNetTests } from './net.test.js';
@@ -142,56 +141,6 @@ n += runRoomTests();
 n += runLanTests();
 n += await runNetTests();
 
-// hands are revealed to everyone only once the hand is over
-const revealSeen = { play: 0, end: 0 };
-function checkReveal(g, v) {
-  JSON.stringify(v);
-  if (v.phase !== 'end' && v.phase !== 'over') {
-    assert.ok(!v.revealed || !v.revealed.length, 'no hands revealed during play');
-    revealSeen.play++;
-    return;
-  }
-  assert.equal(v.revealed.length, 4);
-  v.revealed.forEach((h, s) => {
-    const p = g.players[s];
-    const n = h.hand.length + (h.drawn != null ? 1 : 0);
-    assert.equal(n, p.hand.length);
-    assert.equal(v.players[s].handCount, n);
-    assert.ok([13, 14].includes(n + 3 * p.melds.length), 'tile count ' + n);
-    assert.deepEqual([...h.hand, ...(h.drawn != null ? [h.drawn] : [])].sort((a, b) => a - b), [...p.hand].sort((a, b) => a - b));
-  });
-  revealSeen.end++;
-}
+n += runEngineTests();
 
-// full bot games (on a fake clock: same results as real timers, no idle time)
-const clock = installFakeClock();
-const runGame = (seed, length) => {
-  let s = seed;
-  const rng = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
-  let done = null;
-  const g = new Game([0, 1, 2, 3].map((i) => ({ name: 'B' + i, kind: 'bot' })), { length, botDelay: 0, rng,
-    onChange: (gg) => {
-      for (let i = 0; i < 4; i++) checkReveal(gg, gg.view(i));
-      const total = gg.players.reduce((a, p) => a + p.score, 0) + gg.sticks * 1000;
-      if (total !== 100000) throw new Error('score sum ' + total);
-      if (gg.phase === 'over') done = gg;
-    } });
-  g.start();
-  clock.runAll(() => done);
-  assert.ok(done, 'game finished');
-  return done;
-};
-
-const t0 = Date.now();
-const stats = { ron: 0, tsumo: 0, draw: 0, rounds: 0 };
-for (let i = 1; i <= 30; i++) {
-  const g = runGame(i * 7919, 2);
-  for (const r of g.log) { stats[r.type]++; stats.rounds++; }
-}
-clock.uninstall();
-console.log('bot games ok', stats, (Date.now() - t0) + 'ms');
-// baseline from the original implementation (same seeds)
-assert.deepEqual(stats, { ron: 197, tsumo: 96, draw: 24, rounds: 317 });
-assert.ok(revealSeen.play > 1000 && revealSeen.end >= 4 * 317, 'reveal checks ran ' + JSON.stringify(revealSeen));
-n++;
 console.log(n, 'unit tests passed');

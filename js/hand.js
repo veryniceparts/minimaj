@@ -328,7 +328,6 @@ export function evaluateWin(ctx) {
   const flushYaku = [];
   if (suits.size === 1 && !hasHonor) flushYaku.push(['Chinitsu', menzen ? 6 : 5]);
   else if (suits.size === 1 && hasHonor) flushYaku.push(['Honitsu', menzen ? 3 : 2]);
-  if (suits.size === 0 && hasHonor) flushYaku.length = 0;
 
   const candidates = [];
   const pushResult = (yakuList, fu, yakumanList) => {
@@ -429,10 +428,9 @@ export function evaluateWin(ctx) {
         if (b.t === ctx.roundWind) y.push(['Round Wind', 1]);
       }
       if (menzen) {
-        const seqKeys = seqs.map((b) => b.t).sort((a, b) => a - b);
         let peiko = 0;
         const cnt = {};
-        for (const t of seqKeys) cnt[t] = (cnt[t] || 0) + 1;
+        for (const b of seqs) cnt[b.t] = (cnt[b.t] || 0) + 1;
         for (const t in cnt) peiko += Math.floor(cnt[t] / 2);
         if (peiko >= 2) y.push(['Ryanpeikou', 3]);
         else if (peiko === 1) y.push(['Iipeikou', 1]);

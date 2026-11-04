@@ -136,7 +136,7 @@ export function actionsHTML(v, ui) {
 function deltasTable(v, r) {
   return `<table class="scores">${v.players.map((p, i) => {
     const d = r.deltas[i];
-    return `<tr${i === v.seat ? ' class="me"' : ''}><td class="w">${WIND_CHARS[(i - v.dealer + 4) % 4]}</td><td>${esc(p.name)}</td><td class="num">${r.scores[i]}</td>
+    return `<tr${i === v.seat ? ' class="me"' : ''}><td class="w">${WIND_CHARS[(i - v.dealer + 4) % 4]}</td><td class="nm">${esc(p.name)}</td><td class="num">${r.scores[i]}</td>
       <td class="num ${d > 0 ? 'pos' : d < 0 ? 'neg' : ''}">${d > 0 ? '+' : ''}${d || ''}</td></tr>`;
   }).join('')}</table>`;
 }
@@ -154,7 +154,7 @@ const PEEK_BTN = '<button class="act ghost peekbtn" data-ui="close" title="Close
 export function resultHTML(v) {
   const r = v.result;
   if (v.phase === 'over') {
-    const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td>${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
+    const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td class="nm">${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
     return `<div class="res over"><h2 class="big">Game over</h2><table class="scores final">${rows}</table>
       <div class="btns">${v.isHost ? '<button class="act hot wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>' : '<p class="muted wait">Waiting for the host…</p>'}
       ${PEEK_BTN.replace('class="act ghost', 'class="act ghost wide')}<button class="act ghost wide" data-act='{"type":"ui-leave"}'>Leave</button></div></div>`;
@@ -195,7 +195,7 @@ export function peekActions(v) {
 
 let current = null; // the live Table, for Escape
 window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || !current || !current.root.isConnected) return;
+  if (e.key !== 'Escape' || !current) return;
   const menu = document.getElementById('menu');
   if (menu && !menu.hidden) return; // main.js closes the menu first
   if (current.resKey && !current.peek) current.setPeek(true);
@@ -209,31 +209,39 @@ const ANGLES = [0, -90, 180, 90]; // rotation of layer r0..r3
 
 function setText(el, s) { s = String(s); if (el._t !== s) { el._t = s; el.textContent = s; } }
 function setCls(el, c) { if (el.className !== c) el.className = c; }
+// restart a CSS entry animation (.in) on an element
+function replayIn(el) { el.classList.remove('in'); void el.offsetWidth; el.classList.add('in'); }
+
+const TABLE_HTML = `
+  <div id="table"><div id="wrap"><div id="board">
+    <div class="center"><div class="round"></div><div class="sub"></div><div class="dora"></div></div>
+    ${[0, 1, 2, 3].map((r) => `<div class="layer r${r}">
+      <div class="info"><div class="txt"><span class="wind"></span><span class="score"></span><span class="stick" hidden></span><span class="pname"></span></div></div>
+      <div class="pond"></div>
+      <div class="edge"><span class="backs"></span><span class="melds"></span></div>
+    </div>`).join('')}
+  </div><div id="announce"></div></div></div>
+  <div id="bar">
+    <div id="status"><span id="hint"></span><span id="actions"></span></div>
+    <div id="hand"><div class="handrow"><span class="tiles"></span><span class="drawn"></span><span class="mymelds"></span></div></div>
+  </div>
+  <div id="modal" role="dialog" aria-modal="true" aria-label="Hand result" hidden><div class="card" id="modalcard"></div></div>`;
 
 export class Table {
   constructor(root) {
     this.root = root;
-    this.nodes = new Map(); // key -> tile element ('t'+id for faces, 'h'+seat+':'+i for hidden backs)
+    // key -> tile element ('t'+id for faces, 'h'+seat+':'+i for hidden backs).
+    // Bounded: at most 136 faces + 4 x 14 backs, reused across hands.
+    this.nodes = new Map();
     this.anims = new Set();
     this.dealKey = null;
     this.evId = 0;
     this.actKey = null;
     this.resKey = null;
     this.doraSet = new Set(); // tile types that are currently dora (marked with .dora)
-    root.innerHTML = `
-      <div id="table"><div id="wrap"><div id="board">
-        <div class="center"><div class="round"></div><div class="sub"></div><div class="dora"></div></div>
-        ${[0, 1, 2, 3].map((r) => `<div class="layer r${r}">
-          <div class="info"><div class="txt"><span class="wind"></span><span class="score"></span><span class="stick" hidden></span><span class="pname"></span></div></div>
-          <div class="pond"></div>
-          <div class="edge"><span class="backs"></span><span class="melds"></span></div>
-        </div>`).join('')}
-      </div><div id="announce"></div></div></div>
-      <div id="bar">
-        <div id="status"><span id="hint"></span><span id="actions"></span></div>
-        <div id="hand"><div class="handrow"><span class="tiles"></span><span class="drawn"></span><span class="mymelds"></span></div></div>
-      </div>
-      <div id="modal" hidden><div class="card" id="modalcard"></div></div>`;
+    this.peek = false; // result card closed to look at the revealed table
+    this.off = new AbortController(); // removes our listeners in destroy()
+    root.innerHTML = TABLE_HTML;
     const q = (s) => root.querySelector(s);
     this.el = {
       round: q('.center .round'), sub: q('.center .sub'), dora: q('.center .dora'),
@@ -241,14 +249,12 @@ export class Table {
       hand: q('#hand .tiles'), drawn: q('#hand .drawn'), mymelds: q('#hand .mymelds'),
       modal: q('#modal'), modalcard: q('#modalcard'),
     };
-    this.peek = false; // result card closed to look at the revealed table
-    current = this;
     root.addEventListener('click', (e) => {
       const b = e.target.closest('[data-ui]');
       if (b && b.dataset.ui === 'close') this.setPeek(true);
       else if (b && b.dataset.ui === 'open') this.setPeek(false);
       else if (e.target === this.el.modal && this.resKey) this.setPeek(true); // tap on the backdrop
-    });
+    }, { signal: this.off.signal });
     this.layers = [0, 1, 2, 3].map((r) => {
       const L = q(`.layer.r${r}`);
       const o = {
@@ -260,19 +266,30 @@ export class Table {
       return o;
     });
     this.el.hand._ang = this.el.drawn._ang = this.el.mymelds._ang = 0;
+    current = this;
+  }
+
+  // The screen is leaving the table: drop listeners, animations and tile nodes.
+  destroy() {
+    this.off.abort();
+    for (const a of this.anims) a.cancel();
+    this.anims.clear();
+    this.nodes.clear();
+    this.v = null;
+    if (current === this) current = null;
   }
 
   setPeek(on) {
     if (!this.v || this.peek === on) return;
     this.peek = on;
     this.update(this.v, this.ui);
-    if (!on) {
-      this.el.modal.classList.remove('in');
-      void this.el.modal.offsetWidth;
-      this.el.modal.classList.add('in');
-      const go = this.el.modalcard.querySelector('.go');
-      if (go) go.focus({ preventScroll: true });
-    }
+    if (!on) this.showModal();
+  }
+
+  showModal() {
+    replayIn(this.el.modal);
+    const go = this.el.modalcard.querySelector('.go');
+    if (go) go.focus({ preventScroll: true });
   }
 
   node(key, id) {
@@ -313,28 +330,43 @@ export class Table {
   }
 
   update(v, ui) {
-    const me = v.seat;
     this.v = v;
     this.ui = ui;
     const dealKey = `${v.round}:${v.kyoku}:${v.honba}:${v.dora.length ? v.dora[0] : ''}`;
     const animate = this.dealKey === dealKey && !reduceMotion.matches && !document.hidden && typeof Element.prototype.animate === 'function';
     this.dealKey = dealKey;
 
-    // FIRST: where every connected tile is now
-    let before = null;
-    const lastBack = [];
-    if (animate) {
-      before = new Map();
-      for (const el of this.nodes.values()) if (el.isConnected) before.set(el, { r: el.getBoundingClientRect(), a: el._ang });
-      for (let r = 1; r < 4; r++) {
-        const b = this.layers[r].backs.lastElementChild;
-        if (b) lastBack[(me + r) % 4] = b.getBoundingClientRect();
-      }
-    }
+    // FIRST: where every connected tile is now (mid-animation positions included)
+    const before = animate ? this.measure(v.seat) : null;
     for (const a of this.anims) a.cancel();
     this.anims.clear();
 
-    /* ---- patch ---- */
+    this.patchCenter(v);
+    const newPond = new Set(); // elements newly added to a pond
+    for (let r = 0; r < 4; r++) this.patchSeat(v, r, newPond);
+    this.patchHand(v, ui);
+    const rk = resultKey(v);
+    this.patchBar(v, ui, rk);
+    const event = this.patchEvent(v);
+    this.patchModal(v, rk);
+
+    // LAST + INVERT + PLAY
+    if (before) this.flip(before, newPond);
+    return { event };
+  }
+
+  measure(me) {
+    const rects = new Map();
+    for (const el of this.nodes.values()) if (el.isConnected) rects.set(el, { r: el.getBoundingClientRect(), a: el._ang });
+    const lastBack = [];
+    for (let r = 1; r < 4; r++) {
+      const b = this.layers[r].backs.lastElementChild;
+      if (b) lastBack[(me + r) % 4] = b.getBoundingClientRect();
+    }
+    return { rects, lastBack };
+  }
+
+  patchCenter(v) {
     setText(this.el.round, roundName(v));
     const extra = [v.honba ? `${v.honba} honba` : '', v.sticks ? `${v.sticks} riichi` : ''].filter(Boolean).join(' · ');
     setText(this.el.sub, `${v.wall} left${extra ? `\n${extra}` : ''}`);
@@ -346,59 +378,55 @@ export class Table {
       for (let i = 0; i < 5; i++) d.push(i < v.dora.length ? tileHTML(v.dora[i]) : tileHTML(null));
       this.el.dora.innerHTML = d.join('');
     }
+  }
 
-    const newPond = new Set(); // elements newly added to a pond -> seat
-    for (let r = 0; r < 4; r++) {
-      const s = (me + r) % 4;
-      const p = v.players[s];
-      const L = this.layers[r];
-      const wind = (s - v.dealer + 4) % 4;
-      const isTurn = (v.phase === 'discard' && v.turn === s) || (v.claimTile && v.claimTile.from === s);
-      setCls(L.info, `info${isTurn ? ' turn' : ''}${wind === 0 ? ' dealer' : ''}${p.kind === 'bot' ? ' bot' : ''}`);
-      setText(L.wind, WIND_CHARS[wind]);
-      setText(L.score, p.score);
-      if (L.stick.hidden === !!p.riichi) L.stick.hidden = !p.riichi;
-      setText(L.pname, p.name);
+  // layer r shows seat (me + r) % 4: info plate, pond, and (for opponents) hand + melds
+  patchSeat(v, r, newPond) {
+    const s = (v.seat + r) % 4;
+    const p = v.players[s];
+    const L = this.layers[r];
+    const wind = (s - v.dealer + 4) % 4;
+    const isTurn = (v.phase === 'discard' && v.turn === s) || (v.claimTile && v.claimTile.from === s);
+    setCls(L.info, `info${isTurn ? ' turn' : ''}${wind === 0 ? ' dealer' : ''}${p.kind === 'bot' ? ' bot' : ''}`);
+    setText(L.wind, WIND_CHARS[wind]);
+    setText(L.score, p.score);
+    if (L.stick.hidden === !!p.riichi) L.stick.hidden = !p.riichi;
+    setText(L.pname, p.name);
 
-      const hl = v.claimTile ? v.claimTile.from === s : v.lastDiscard && v.lastDiscard.seat === s;
-      const list = [];
-      let sideNext = false;
-      p.discards.forEach((d, i) => {
-        const side = d.riichi || sideNext;
-        if (d.called) { sideNext = side; return; }
-        sideNext = false;
-        let mods = side ? 'side' : '';
-        if (d.tsumogiri) mods += ' tg';
-        if (hl && i === p.discards.length - 1) mods += ' last';
-        const el = this.node('t' + d.tile, d.tile);
-        if (!el.isConnected || el.parentNode !== L.pond) { el._from = s; newPond.add(el); }
-        list.push([el, mods.trim()]);
-      });
-      this.place(L.pond, list);
+    const hl = v.claimTile ? v.claimTile.from === s : v.lastDiscard && v.lastDiscard.seat === s;
+    const list = [];
+    let sideNext = false; // a riichi tile that was called: the next discard turns sideways
+    p.discards.forEach((d, i) => {
+      const side = d.riichi || sideNext;
+      if (d.called) { sideNext = side; return; }
+      sideNext = false;
+      let mods = side ? 'side' : '';
+      if (d.tsumogiri) mods += ' tg';
+      if (hl && i === p.discards.length - 1) mods += ' last';
+      const el = this.node('t' + d.tile, d.tile);
+      if (el.parentNode !== L.pond) { el._from = s; newPond.add(el); }
+      list.push([el, mods.trim()]);
+    });
+    this.place(L.pond, list);
+    if (r === 0) return; // your own hand and melds are in the bar
 
-      if (r !== 0) {
-        const backs = [];
-        const shown = v.revealed && v.revealed[s];
-        if (shown) {
-          // hand over: everyone's tiles face up, in place of the backs
-          for (const id of shown.hand) backs.push([this.node('t' + id, id), 'rv']);
-          if (shown.drawn != null) backs.push([this.node('t' + shown.drawn, shown.drawn), 'rv dr']);
-          for (const [el] of backs) el._from = s;
-        } else {
-          const drew = v.phase === 'discard' && v.turn === s && p.handCount % 3 === 2;
-          for (let i = 0; i < p.handCount; i++) {
-            const el = this.node(`h${s}:${i}`, null);
-            el._from = s;
-            backs.push([el, drew && i === p.handCount - 1 ? 'dr' : '']);
-          }
-        }
-        this.place(L.backs, backs);
-        this.placeMelds(L.melds, p.melds, s);
-        for (const span of L.melds.children) for (const el of span.children) el._from = s;
-      }
+    const backs = [];
+    const shown = v.revealed && v.revealed[s];
+    if (shown) {
+      // hand over: everyone's tiles face up, in place of the backs
+      for (const id of shown.hand) backs.push([this.node('t' + id, id), 'rv']);
+      if (shown.drawn != null) backs.push([this.node('t' + shown.drawn, shown.drawn), 'rv dr']);
+    } else {
+      const drew = v.phase === 'discard' && v.turn === s && p.handCount % 3 === 2;
+      for (let i = 0; i < p.handCount; i++) backs.push([this.node(`h${s}:${i}`, null), drew && i === p.handCount - 1 ? 'dr' : '']);
     }
+    for (const [el] of backs) el._from = s;
+    this.place(L.backs, backs);
+    this.placeMelds(L.melds, p.melds, s);
+    for (const span of L.melds.children) for (const el of span.children) el._from = s;
+  }
 
-    // own hand
+  patchHand(v, ui) {
     const opts = v.options;
     const allowed = opts ? new Set(ui.riichiMode ? opts.riichi : opts.discard) : null;
     const mods = (id) => {
@@ -408,12 +436,13 @@ export class Table {
     };
     this.place(this.el.hand, v.hand.map((id) => [this.node('t' + id, id), mods(id)]));
     this.place(this.el.drawn, v.drawn != null ? [[this.node('t' + v.drawn, v.drawn), mods(v.drawn)]] : []);
-    this.placeMelds(this.el.mymelds, v.players[me].melds, me);
+    this.placeMelds(this.el.mymelds, v.players[v.seat].melds, v.seat);
     this.el.bar.classList.toggle('myturn', !!(v.options || v.claim));
     this.el.bar.classList.toggle('riichimode', !!ui.riichiMode);
+  }
 
-    // action bar (only when changed)
-    const rk = resultKey(v);
+  // hint + buttons (only rewritten when they change)
+  patchBar(v, ui, rk) {
     // a new hand, a new result or the final standings always (re)opens the card
     const fresh = rk !== this.resKey && (!this.resKey || rk.startsWith('over') !== this.el.modal._over);
     if (!rk || fresh) this.peek = false;
@@ -424,51 +453,49 @@ export class Table {
       this.el.hint.innerHTML = a.hint;
       this.el.actions.innerHTML = a.html;
     }
+  }
 
-    // speech bubble
-    let event = null;
-    if (v.event && v.event.id !== this.evId) {
-      this.evId = v.event.id;
-      event = v.event;
-      const r = (v.event.seat - me + 4) % 4;
-      const kind = /Riichi/.test(event.text) ? 'y' : /Ron|Tsumo/.test(event.text) ? 'g' : /Ryuukyoku/.test(event.text) ? 'b' : 'p';
-      const span = document.createElement('span');
-      span.className = `ev p${r} ${kind}`;
-      span.textContent = event.text + (kind === 'b' ? '' : '!');
-      this.el.announce.replaceChildren(span);
-      span.addEventListener('animationend', () => span.remove());
-    }
+  // speech bubble for a new call / riichi / win; returns the event (for sounds)
+  patchEvent(v) {
+    if (!v.event || v.event.id === this.evId) return null;
+    const event = v.event;
+    this.evId = event.id;
+    const r = (event.seat - v.seat + 4) % 4;
+    const kind = /Riichi/.test(event.text) ? 'y' : /Ron|Tsumo/.test(event.text) ? 'g' : /Ryuukyoku/.test(event.text) ? 'b' : 'p';
+    const span = document.createElement('span');
+    span.className = `ev p${r} ${kind}`;
+    span.textContent = event.text + (kind === 'b' ? '' : '!');
+    this.el.announce.replaceChildren(span);
+    span.addEventListener('animationend', () => span.remove());
+    return event;
+  }
 
-    // result modal (only when its key changes)
+  // result card (rewritten only when its key changes)
+  patchModal(v, rk) {
+    const m = this.el.modal;
+    let opened = false;
     if (rk !== this.resKey) {
       const wasOpen = !!this.resKey;
       this.resKey = rk;
       if (rk) {
         this.el.modalcard.innerHTML = resultHTML(v);
-        if (!wasOpen || rk.startsWith('over') !== this.el.modal._over) {
-          this.el.modal.hidden = false;
-          this.el.modal.classList.remove('in');
-          void this.el.modal.offsetWidth;
-          this.el.modal.classList.add('in');
-        }
-        this.el.modal._over = rk.startsWith('over');
+        opened = !wasOpen || rk.startsWith('over') !== m._over;
+        m._over = rk.startsWith('over');
       }
     }
-    this.el.modal.hidden = !rk || this.peek;
-
-    /* ---- LAST + INVERT + PLAY ---- */
-    if (animate) this.flip(before, lastBack, newPond, v);
-    return { event };
+    m.hidden = !rk || this.peek;
+    if (opened) this.showModal();
   }
 
-  flip(before, lastBack, newPond, v) {
+  flip({ rects, lastBack }, newPond) {
     const D = 210;
     const run = (el, frames, opts) => {
       const an = el.animate(frames, { duration: D, easing: EASE, ...opts });
       this.anims.add(an);
       an.onfinish = () => this.anims.delete(an);
     };
-    const from = (el, old) => {
+    // animate el from rect `old` (seen at rotation oldAng) to where it is now
+    const from = (el, old, oldAng) => {
       const now = el.getBoundingClientRect();
       if (!now.width) return;
       const dx = (old.left + old.width / 2) - (now.left + now.width / 2);
@@ -479,7 +506,7 @@ export class Table {
       const a = (-angNew * Math.PI) / 180;
       const lx = dx * Math.cos(a) - dy * Math.sin(a);
       const ly = dx * Math.sin(a) + dy * Math.cos(a);
-      let dr = ((old._ang ?? angNew) - angNew) % 360;
+      let dr = ((oldAng ?? angNew) - angNew) % 360;
       if (dr > 180) dr -= 360;
       if (dr <= -180) dr += 360;
       const far = Math.hypot(dx, dy) > 60;
@@ -488,25 +515,14 @@ export class Table {
     };
     for (const el of this.nodes.values()) {
       if (!el.isConnected) continue;
-      const old = before.get(el);
-      if (old) {
-        old.r._ang = old.a;
-        from(el, old.r);
-      } else if (newPond.has(el) && lastBack[el._from]) {
-        const o = lastBack[el._from];
-        o._ang = el._ang;
-        from(el, o);
-      } else if (el.parentNode === this.el.drawn) {
-        run(el, [{ transform: 'translateY(-45%)', opacity: 0, offset: 0 }, { transform: 'none', opacity: 1 }]);
-      } else if (el.classList.contains('back') && el.parentNode.classList.contains('backs')) {
-        run(el, [{ opacity: 0, offset: 0 }, { opacity: 1 }]);
-      } else if (el.parentNode.classList.contains('meld') && lastBack[el._from]) {
-        const o = lastBack[el._from];
-        o._ang = el._ang;
-        from(el, o);
-      } else {
-        run(el, [{ opacity: 0, transform: 'scale(.85)', offset: 0 }, { opacity: 1, transform: 'none' }]);
-      }
+      const old = rects.get(el);
+      const box = el.parentNode;
+      if (old) from(el, old.r, old.a);
+      else if (newPond.has(el) && lastBack[el._from]) from(el, lastBack[el._from], el._ang); // from that player's hand
+      else if (box === this.el.drawn) run(el, [{ transform: 'translateY(-45%)', opacity: 0, offset: 0 }, { transform: 'none', opacity: 1 }]);
+      else if (el.classList.contains('back') && box.classList.contains('backs')) run(el, [{ opacity: 0, offset: 0 }, { opacity: 1 }]);
+      else if (box.classList.contains('meld') && lastBack[el._from]) from(el, lastBack[el._from], el._ang);
+      else run(el, [{ opacity: 0, transform: 'scale(.85)', offset: 0 }, { opacity: 1, transform: 'none' }]);
     }
   }
 }
