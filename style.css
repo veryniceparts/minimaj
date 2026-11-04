@@ -361,41 +361,48 @@ summary { cursor: pointer; font-weight: 600; }
 .mymelds:empty { display: none; }
 .mymelds .tile { --w: calc(var(--hw) * .74); }
 
-/* ---------- wide / landscape: big table that runs on under your hand ----------
-   The square play area (--S, where ponds and layers live) is sized from the full
-   height; the felt is drawn wider and down to the screen bottom, the hand bar
-   overlays it, and hint/actions move into the side gutters beside the square. */
+/* ---------- wide / landscape: the table fills the screen, your hand sits on it ----------
+   --S (opponent tile unit) is the device's short side, as in portrait, so turning
+   the phone does not shrink opponents' tiles; it only gives way when the screen
+   is too small for the layout. The felt (#wrap/#board) is the whole screen; each
+   seat's layer is centered on the center box (at --cy) with its own reach: the
+   top seat reaches the top edge, the side seats sit further out. Your own pond
+   (--wme) is 9 wide and shrinks to fit the room left above your hand.
+   Hint/actions sit in the side gutters, outside the side seats. */
 @media (min-aspect-ratio: 5/4) {
   :root {
     --vh: 100vh;
-    --gut: clamp(150px, 16vw, 210px);
+    --gut: clamp(130px, 16vw, 210px);
     --barh: calc(var(--hw) * 1.36 + 14px + env(safe-area-inset-bottom));
-    /* the center box is at least 120px (readable text); budget for that too */
-    --S: min(calc((var(--vh) - var(--barh) - 14px) / .96), calc((var(--vh) - var(--barh) - 74px) / .794), calc(100vw - 2 * var(--gut)));
+    --S: min(calc(min(100vw, var(--vh)) - 12px),
+      calc((100vw - 2 * var(--gut)) / 1.03), calc((100vw - 2 * var(--gut) - 120px) / .71),
+      calc((var(--vh) - var(--barh) - 20px) / .739), calc((var(--vh) - var(--barh) - 140px) / .419));
   }
   @supports (height: 100dvh) { :root { --vh: 100dvh; } }
-  #board { --c: max(calc(var(--S) * .32), 120px); --ih: max(calc(var(--S) * .052), 16px); }
+  #board {
+    --c: max(calc(var(--S) * .32), 120px); --ih: max(calc(var(--S) * .052), 16px);
+    --cy: calc(var(--c) / 2 + var(--S) * .3);   /* center, from the felt's top */
+    --d1: calc(var(--c) / 2 + var(--S) * .355); /* center -> side seats' edge */
+    --wme: min(calc(var(--S) * .047), calc((var(--vh) - var(--barh) - 16px - var(--cy) - var(--c) / 2 - var(--S) * .014) / 3));
+  }
   .info { height: var(--ih); top: calc(50% + var(--c) / 2 - var(--ih) - var(--S) * .01); width: calc(var(--c) - max(calc(var(--S) * .024), 6px)); }
   .center .dora .tile { --w: max(calc(var(--S) * .03), 11px); }
   #app.game { position: relative; }
   #table { position: absolute; inset: 0; display: block; padding: 0; }
-  #wrap { margin: 4px auto 0; }
-  #board { background: none; box-shadow: none; }
-  #board::before {
-    content: ""; position: absolute; pointer-events: none;
-    top: 0; bottom: calc(var(--S) + 10px - var(--vh));
-    left: calc((var(--S) - 100vw) / 2 + 6px); right: calc((var(--S) - 100vw) / 2 + 6px);
-    border-radius: calc(var(--S) * .05);
-    background: radial-gradient(circle at 50% calc(var(--S) / 2), var(--felt-2), var(--felt) calc(var(--S) * .72));
-    box-shadow: inset 0 0 0 1.5px var(--felt-line), 0 20px 50px rgba(0, 0, 0, .35);
-  }
+  #wrap { position: absolute; top: 4px; left: 6px; right: 6px; bottom: 6px; width: auto; height: auto; }
+  #board { background: radial-gradient(circle at 50% var(--cy), var(--felt-2), var(--felt) calc(var(--S) * .72)); }
+  .center { top: var(--cy); }
+  .layer { --D: var(--d1); inset: auto; left: 50%; top: var(--cy); width: calc(2 * var(--D)); height: calc(2 * var(--D)); margin: calc(-1 * var(--D)) 0 0 calc(-1 * var(--D)); }
+  .layer.r2 { --D: var(--cy); }
+  .layer.r0 .pond { --w: var(--wme); width: calc(var(--w) * 9.95); left: calc(50% - var(--w) * 4.975); }
+  .layer.r0 .pond .tile { --w: var(--wme); }
   #bar { position: absolute; left: 0; right: 0; bottom: 0; min-height: 0; padding: 0 12px calc(8px + env(safe-area-inset-bottom)); }
   #hand { padding-top: 6px; }
   #status {
     position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px);
     max-width: none; margin: 0; min-height: 0; align-items: flex-end; flex-wrap: nowrap; pointer-events: none;
   }
-  #hint, #actions { pointer-events: auto; max-width: calc((100vw - var(--S)) / 2 - 22px); }
+  #hint, #actions { pointer-events: auto; max-width: calc(50vw - max(calc(var(--S) * .16), 60px) - var(--S) * .355 - 22px); }
 }
 
 /* ---------- modal ---------- */
