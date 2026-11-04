@@ -1,7 +1,7 @@
 // Table rendering. The game DOM is built once; tile nodes are keyed by tile id
 // in one shared Map, so a node can move between hand, pond and meld containers
 // and is animated with FLIP (Web Animations API, transform/opacity only).
-import { tileType, isRed, WIND_CHARS, WIND_NAMES } from './tiles.js';
+import { tileType, isRed, doraFromIndicator, WIND_CHARS, WIND_NAMES } from './tiles.js';
 
 const C = { man: '#c8445f', pin: '#3a6fbf', sou: '#26845b', red: '#e0435f', tile: '#fdf6ee' };
 const HONOR_CHAR = ['東', '南', '西', '北', '', '發', '中'];
@@ -24,7 +24,7 @@ const svg = (body) => `<svg viewBox="0 0 100 100" preserveAspectRatio="none" ari
 function pinSVG(n, red) {
   const r = n === 1 ? 21 : n <= 4 ? 14 : n <= 6 ? 12 : 10;
   return svg(PIN[n - 1].map(([x, y], i) => {
-    const c = red && n === 5 && i === 2 ? C.red : (n === 1 || (n === 5 && i === 2) || (n === 7 && i < 3)) ? C.man : (i % 2 ? C.sou : C.pin);
+    const c = red && n === 5 ? C.red : (n === 1 || (n === 5 && i === 2) || (n === 7 && i < 3)) ? C.man : (i % 2 ? C.sou : C.pin);
     return `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${c}" stroke-width="${r * 0.5}"/><circle cx="${x}" cy="${y}" r="${r * 0.32}" fill="${c}"/>`;
   }).join(''));
 }
@@ -63,10 +63,15 @@ function baseClass(id) {
   return `tile k-${kind}${isRed(id) ? ' red' : ''}`;
 }
 
-export function tileHTML(id, cls = '') {
+// doraSet: optional Set of dora tile types; matching tiles get the 'dora' marker class
+export function tileHTML(id, cls = '', doraSet = null) {
   if (id == null || id < 0) return `<span class="tile back ${cls}"></span>`;
+  if (doraSet && doraSet.has(tileType(id))) cls += ' dora';
   return `<span class="${baseClass(id)} ${cls}">${faceHTML(tileType(id), isRed(id))}</span>`;
 }
+
+// tile types that are dora for the given indicator tile ids
+export const doraTypes = (indicators) => new Set((indicators || []).map((id) => doraFromIndicator(tileType(id))));
 
 const typeTile = (t, cls = '') => tileHTML(t * 4 + (t === 4 || t === 13 || t === 22 ? 1 : 0), cls);
 
@@ -82,8 +87,8 @@ function meldOrder(m, owner) {
   return parts;
 }
 
-function meldHTML(m, owner) {
-  return `<span class="meld">${meldOrder(m, owner).map(([id, c]) => (c === 'back' ? tileHTML(null) : tileHTML(id, c))).join('')}</span>`;
+function meldHTML(m, owner, ds = null) {
+  return `<span class="meld">${meldOrder(m, owner).map(([id, c]) => (c === 'back' ? tileHTML(null) : tileHTML(id, c, ds))).join('')}</span>`;
 }
 
 export function roundName(v) {
@@ -155,16 +160,17 @@ export function resultHTML(v) {
   }
   // .res is a grid on short landscape screens: hand + yaku left, scores + button right (see style.css)
   let body;
+  const ds = doraTypes(r.dora || v.dora); // ura indicators are not dora here
   if (r.type === 'draw') {
     body = `<h2>Ryuukyoku <small>exhaustive draw</small></h2>
       <div class="rhands">${r.tenpai.length ? r.hands.map((h) => `<div class="rhand"><div class="who">${esc(v.players[h.seat].name)} — tenpai</div>
-        ${h.hand.map((id) => tileHTML(id)).join('')}${h.melds.map((m) => meldHTML(m, h.seat)).join('')}</div>`).join('') : '<p class="muted">Nobody was tenpai</p>'}</div>`;
+        ${h.hand.map((id) => tileHTML(id, '', ds)).join('')}${h.melds.map((m) => meldHTML(m, h.seat, ds)).join('')}</div>`).join('') : '<p class="muted">Nobody was tenpai</p>'}</div>`;
   } else {
     const w = v.players[r.winner];
     const how = r.type === 'tsumo' ? (r.winner === v.seat ? 'you won!' : '') : `from ${esc(v.players[r.from].name)}`;
     body = `<h2><span class="badge ${r.type}">${r.type === 'tsumo' ? 'Tsumo' : 'Ron'}</span> ${esc(w.name)} <small>${how}</small></h2>
-      <div class="rhand">${r.hand.map((id) => tileHTML(id)).join('')}<span class="gap"></span>${tileHTML(r.winTile, 'win')}
-        ${r.melds.map((m) => meldHTML(m, r.winner)).join('')}</div>
+      <div class="rhand">${r.hand.map((id) => tileHTML(id, '', ds)).join('')}<span class="gap"></span>${tileHTML(r.winTile, 'win', ds)}
+        ${r.melds.map((m) => meldHTML(m, r.winner, ds)).join('')}</div>
       <div class="indic">Dora ${r.dora.map((id) => tileHTML(id)).join('')}${r.ura.length ? `<span class="sep"></span>Ura ${r.ura.map((id) => tileHTML(id)).join('')}` : ''}</div>
       <ul class="yaku${r.yaku.length > 3 ? ' two' : ''}">${r.yaku.map(([n, h]) => `<li><span>${esc(n)}</span><span>${r.yakuman ? '' : h + ' han'}</span></li>`).join('')}</ul>
       <div class="total">${r.yakuman ? '' : `${r.han} han ${r.fu} fu`} ${r.limit ? `<b>${r.limit}</b>` : ''} · <b>${r.points}</b></div>`;
@@ -212,6 +218,7 @@ export class Table {
     this.evId = 0;
     this.actKey = null;
     this.resKey = null;
+    this.doraSet = new Set(); // tile types that are currently dora (marked with .dora)
     root.innerHTML = `
       <div id="table"><div id="wrap"><div id="board">
         <div class="center"><div class="round"></div><div class="sub"></div><div class="dora"></div></div>
@@ -274,6 +281,7 @@ export class Table {
       t.innerHTML = tileHTML(id);
       el = t.content.firstChild;
       el._base = baseClass(id);
+      el._type = id == null || id < 0 ? -1 : tileType(id);
       if (id != null) el.dataset.id = id;
       this.nodes.set(key, el);
     }
@@ -284,7 +292,8 @@ export class Table {
   place(box, list) {
     let i = 0;
     for (const [el, mods] of list) {
-      setCls(el, mods ? `${el._base} ${mods}` : el._base);
+      const base = this.doraSet.has(el._type) ? `${el._base} dora` : el._base;
+      setCls(el, mods ? `${base} ${mods}` : base);
       el._ang = box._ang;
       if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
       i++;
@@ -331,6 +340,7 @@ export class Table {
     const doraKey = v.dora.join(',');
     if (this.el.dora._k !== doraKey) {
       this.el.dora._k = doraKey;
+      this.doraSet = doraTypes(v.dora);
       const d = [];
       for (let i = 0; i < 5; i++) d.push(i < v.dora.length ? tileHTML(v.dora[i]) : tileHTML(null));
       this.el.dora.innerHTML = d.join('');

@@ -17,6 +17,25 @@ const prefs = {
 const applyManNumerals = () => document.documentElement.classList.toggle('man-arabic', !prefs.mankanji);
 applyManNumerals();
 
+// Color themes (style.css, [data-theme] blocks). index.html sets the saved one before
+// the first paint; this keeps it valid and the browser chrome color in step.
+const THEMES = [
+  ['plum', 'Plum', 'Plum night'], ['matcha', 'Matcha', 'Matcha'], ['sakura', 'Sakura', 'Sakura'],
+  ['ocean', 'Ocean', 'Ocean'], ['felt', 'Felt', 'Classic felt'], ['wood', 'Wood', 'Walnut wood'],
+  ['midnight', 'Midnight', 'Midnight'], ['washi', 'Washi', 'Washi paper (light)'], ['peach', 'Sunset', 'Peach sunset'],
+];
+let theme = store.get('minimaj-theme', 'plum');
+function applyTheme() {
+  if (!THEMES.some(([id]) => id === theme)) theme = 'plum';
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  const cs = getComputedStyle(root);
+  const meta = (n) => document.querySelector(`meta[name="${n}"]`);
+  if (meta('theme-color')) meta('theme-color').content = cs.getPropertyValue('--bg-0').trim();
+  if (meta('color-scheme')) meta('color-scheme').content = cs.colorScheme || 'dark';
+}
+applyTheme();
+
 let net = null;       // session module (js/net.js or js/dev-fake.js)
 let info = null;      // /info.json when served by the minimaj app, else null
 let qr = null;        // js/qr.js module, if available
@@ -93,6 +112,7 @@ const ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><c
 function setupMenu() {
   const btn = $('menubtn');
   btn.innerHTML = ICON;
+  btn.hidden = false; // on every screen, so the theme can be changed anytime
   btn.onclick = (e) => { e.stopPropagation(); toggleMenu(); };
   document.addEventListener('click', (e) => { if (!$('menu').hidden && !e.target.closest('#menu')) $('menu').hidden = true; });
 }
@@ -102,17 +122,25 @@ function toggleMenu(force) {
   const show = force ?? m.hidden;
   if (!show) { m.hidden = true; return; }
   const sw = (k, label) => `<button data-pref="${k}" class="${prefs[k] ? 'on' : ''}">${label}<span class="sw"></span></button>`;
-  m.innerHTML = sw('sound', 'Sound')
+  const swatch = ([id, short, full]) => `<button class="thm${id === theme ? ' on' : ''}" data-theme="${id}" role="radio" aria-checked="${id === theme}" aria-label="${full}" title="${full}">`
+    + `<span class="sf"><i class="b"></i><i class="f"></i><i class="a"></i></span><span class="nm">${short}</span></button>`;
+  m.innerHTML = '<div class="mopts">' + sw('sound', 'Sound')
     + `<button data-menu="mannum">Man numbers<span class="val">${prefs.mankanji ? '一二三' : '1 2 3'}</span></button>`
     + (session ? `<hr><button class="leave" data-menu="leave">Leave table</button>` : '')
     // only on the device running the minimaj app's table
-    + (info && info.hostOk ? `${session ? '' : '<hr>'}<button class="leave" data-menu="stop">Stop server</button>` : '');
+    + (info && info.hostOk ? `${session ? '' : '<hr>'}<button class="leave" data-menu="stop">Stop server</button>` : '')
+    + `</div><div class="mtheme"><div class="mlabel" id="thlabel">Theme</div><div class="thgrid" role="radiogroup" aria-labelledby="thlabel">${THEMES.map(swatch).join('')}</div></div>`;
   m.hidden = false;
   let stopArmedMenu = false;
   m.onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.pref) {
+    if (b.dataset.theme) {
+      theme = b.dataset.theme;
+      store.set('minimaj-theme', theme);
+      applyTheme();
+      for (const t of m.querySelectorAll('.thm')) { t.classList.toggle('on', t === b); t.setAttribute('aria-checked', t === b); }
+    } else if (b.dataset.pref) {
       const k = b.dataset.pref;
       prefs[k] = !prefs[k];
       store.set(`minimaj-${k}`, prefs[k] ? '1' : '0');
@@ -142,7 +170,6 @@ function setScreen(name, cls = 'home') {
   if (name !== 'game') { view = null; prev = null; }
   app.className = cls;
   app.onclick = null;
-  $('menubtn').hidden = !(name === 'lobby' || name === 'game');
   $('menu').hidden = true;
   document.title = 'minimaj';
 }

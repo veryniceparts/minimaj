@@ -59,7 +59,7 @@ the host should keep it open.
 again to discard. Buttons for **Chi / Pon / Kan / Ron / Tsumo / Riichi** appear
 when you can use them. After riichi your draws are discarded for you. The bar
 shows your waits when you are tenpai and warns you when you are furiten. The
-**•••** menu has sound (off by default) and the man-tile numeral style.
+**•••** menu has sound (off by default), the man-tile numeral style and nine color themes (remembered on this device).
 
 ## Rules implemented
 
