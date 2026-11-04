@@ -14,7 +14,27 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "dev"
     }
 
+    // CI signs every build with the same key so a new APK installs as an update
+    // over the previous one (each runner would otherwise make a fresh debug key
+    // and Android refuses the update). The key is never in the repo: CI decodes
+    // the ANDROID_KEYSTORE_B64 secret to a file and passes -PminimajKeystore=<path>.
+    // Without it (local builds) Gradle uses the normal per-machine debug key.
+    val minimajKeystore = project.findProperty("minimajKeystore") as String?
+    if (minimajKeystore != null) {
+        signingConfigs {
+            create("minimaj") {
+                storeFile = file(minimajKeystore)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
+        getByName("debug") {
+            if (minimajKeystore != null) signingConfig = signingConfigs.getByName("minimaj")
+        }
         release {
             isMinifyEnabled = false
         }

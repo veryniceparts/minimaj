@@ -18,3 +18,7 @@ android/app/src/main/jniLibs/
 
 # os
 .DS_Store
+
+# signing keys are never committed (CI reads ANDROID_KEYSTORE_B64)
+*.keystore
+*.jks

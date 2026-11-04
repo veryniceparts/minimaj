@@ -107,15 +107,34 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Build APK
+        env:
+          # Repository secret (Settings -> Secrets and variables -> Actions):
+          # the signing keystore, base64-encoded. Keeps every build updatable.
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="dev-${GITHUB_SHA::7}"; fi
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           cp bin/minimaj-android-arm64 android/app/src/main/jniLibs/arm64-v8a/libminimaj.so
-          gradle -p android assembleDebug -PversionName="$v" -PversionCode="${GITHUB_RUN_NUMBER}"
+          if [ -z "${ANDROID_KEYSTORE_B64:-}" ]; then
+            echo "::error::The ANDROID_KEYSTORE_B64 secret is not set. Add it under Settings > Secrets and variables > Actions, or phones can't install new builds as updates."
+            exit 1
+          fi
+          ks="$RUNNER_TEMP/minimaj.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$ks"
+          gradle -p android assembleDebug -PversionName="$v" -PversionCode="${GITHUB_RUN_NUMBER}" -PminimajKeystore="$ks"
+          rm -f "$ks"
           mkdir -p dist
           cp android/app/build/outputs/apk/debug/app-debug.apk dist/minimaj-android-arm64.apk
           ls -l dist
+      - name: Check APK signing key (updates must keep the same key)
+        run: |
+          set -euo pipefail
+          want="452A87438EE609FEFC1B490BEB2C5A38F15BBFE84A548F93A2EF7D5A7C8400E7"
+          got=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs dist/minimaj-android-arm64.apk \
+            | grep -m1 'SHA-256 digest' | awk '{print toupper($NF)}')
+          echo "signer SHA-256: $got"
+          [ "$got" = "$want" ] || { echo "APK signed with an unexpected key: phones could not update it"; exit 1; }
       - uses: actions/upload-artifact@v7
         with:
           name: dist-android

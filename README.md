@@ -25,7 +25,7 @@ Pushing a `v*` tag also attaches them to a GitHub release.
 | --- | --- | --- |
 | Windows | `minimaj-windows-amd64.zip` → `minimaj.exe` | SmartScreen: *More info → Run anyway*. Allow *Private networks* in the firewall prompt. |
 | macOS | `minimaj-macos.zip` → `minimaj.app` (universal) | Not notarized: right-click the app → *Open*. Allow incoming connections. |
-| Android | `minimaj-android-arm64.apk` | Allow installing from your browser or file manager. Allow notifications so the table keeps running. |
+| Android | `minimaj-android-arm64.apk` | Allow installing from your browser or file manager. Allow notifications so the table keeps running. New builds install as updates: CI signs them all with one key from the `ANDROID_KEYSTORE_B64` repository secret. |
 | Linux | `minimaj-linux-amd64.tar.gz` / `arm64` | Run `./minimaj`. |
 
 ## Play
