@@ -40,12 +40,14 @@ function souSVG(n, red) {
   }).join(''));
 }
 
+// Man numerals: both glyphs are emitted; CSS shows kanji by default, or 1-9 when <html> has .man-arabic.
+const MAN_KANJI = '一二三四五六七八九';
 const faceCache = new Map();
 function faceHTML(t, red) {
   const key = red ? -1 - t : t;
   let f = faceCache.get(key);
   if (f) return f;
-  if (t < 9) f = `<span class="f"><b>${t + 1}</b><i>萬</i></span>`;
+  if (t < 9) f = `<span class="f"><em>${MAN_KANJI[t]}</em><b>${t + 1}</b><i>萬</i></span>`;
   else if (t < 18) f = pinSVG(t - 8, red);
   else if (t < 27) f = souSVG(t - 17, red);
   else if (t === 31) f = '<span class="hk"></span>';
@@ -144,15 +146,16 @@ export function resultHTML(v) {
   const r = v.result;
   if (v.phase === 'over') {
     const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td>${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
-    return `<h2 class="big">Game over</h2><table class="scores final">${rows}</table>
-      ${v.isHost ? '<button class="act hot wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>' : '<p class="muted">Waiting for the host…</p>'}
-      <button class="act ghost wide" data-act='{"type":"ui-leave"}'>Leave</button>`;
+    return `<div class="res over"><h2 class="big">Game over</h2><table class="scores final">${rows}</table>
+      <div class="btns">${v.isHost ? '<button class="act hot wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>' : '<p class="muted wait">Waiting for the host…</p>'}
+      <button class="act ghost wide" data-act='{"type":"ui-leave"}'>Leave</button></div></div>`;
   }
+  // .res is a grid on short landscape screens: hand + yaku left, scores + button right (see style.css)
   let body;
   if (r.type === 'draw') {
     body = `<h2>Ryuukyoku <small>exhaustive draw</small></h2>
-      ${r.tenpai.length ? r.hands.map((h) => `<div class="rhand"><div class="who">${esc(v.players[h.seat].name)} — tenpai</div>
-        ${h.hand.map((id) => tileHTML(id)).join('')}${h.melds.map((m) => meldHTML(m, h.seat)).join('')}</div>`).join('') : '<p class="muted">Nobody was tenpai</p>'}`;
+      <div class="rhands">${r.tenpai.length ? r.hands.map((h) => `<div class="rhand"><div class="who">${esc(v.players[h.seat].name)} — tenpai</div>
+        ${h.hand.map((id) => tileHTML(id)).join('')}${h.melds.map((m) => meldHTML(m, h.seat)).join('')}</div>`).join('') : '<p class="muted">Nobody was tenpai</p>'}</div>`;
   } else {
     const w = v.players[r.winner];
     const how = r.type === 'tsumo' ? (r.winner === v.seat ? 'you won!' : '') : `from ${esc(v.players[r.from].name)}`;
@@ -160,14 +163,14 @@ export function resultHTML(v) {
       <div class="rhand">${r.hand.map((id) => tileHTML(id)).join('')}<span class="gap"></span>${tileHTML(r.winTile, 'win')}
         ${r.melds.map((m) => meldHTML(m, r.winner)).join('')}</div>
       <div class="indic">Dora ${r.dora.map((id) => tileHTML(id)).join('')}${r.ura.length ? `<span class="sep"></span>Ura ${r.ura.map((id) => tileHTML(id)).join('')}` : ''}</div>
-      <ul class="yaku">${r.yaku.map(([n, h]) => `<li><span>${esc(n)}</span><span>${r.yakuman ? '' : h + ' han'}</span></li>`).join('')}</ul>
+      <ul class="yaku${r.yaku.length > 3 ? ' two' : ''}">${r.yaku.map(([n, h]) => `<li><span>${esc(n)}</span><span>${r.yakuman ? '' : h + ' han'}</span></li>`).join('')}</ul>
       <div class="total">${r.yakuman ? '' : `${r.han} han ${r.fu} fu`} ${r.limit ? `<b>${r.limit}</b>` : ''} · <b>${r.points}</b></div>`;
   }
   const readyNames = v.ready.map((s) => esc(v.players[s].name));
   const iAmReady = v.ready.includes(v.seat);
-  return `${body}${deltasTable(v, r)}
-    ${iAmReady ? `<p class="muted">Waiting for others…${readyNames.length ? ' (ready: ' + readyNames.join(', ') + ')' : ''}</p>`
-    : `<button class="act hot wide" data-act='{"type":"ready"}'>${r.gameOver ? 'See results' : 'Next hand'}</button>`}`;
+  return `<div class="res ${r.type === 'draw' ? 'draw' : 'win'}">${body}${deltasTable(v, r)}
+    ${iAmReady ? `<p class="muted wait">Waiting for others…${readyNames.length ? ' (ready: ' + readyNames.join(', ') + ')' : ''}</p>`
+    : `<button class="act hot wide go" data-act='{"type":"ready"}'>${r.gameOver ? 'See results' : 'Next hand'}</button>`}</div>`;
 }
 
 /* ---------------- keyed table ---------------- */
@@ -279,7 +282,8 @@ export class Table {
 
     /* ---- patch ---- */
     setText(this.el.round, roundName(v));
-    setText(this.el.sub, `${v.honba ? `${v.honba} honba · ` : ''}${v.sticks ? `${v.sticks} riichi · ` : ''}${v.wall} left`);
+    const extra = [v.honba ? `${v.honba} honba` : '', v.sticks ? `${v.sticks} riichi` : ''].filter(Boolean).join(' · ');
+    setText(this.el.sub, `${v.wall} left${extra ? `\n${extra}` : ''}`);
     const doraKey = v.dora.join(',');
     if (this.el.dora._k !== doraKey) {
       this.el.dora._k = doraKey;

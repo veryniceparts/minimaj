@@ -267,6 +267,15 @@ export function createRoom(env) {
       if (destroyed) return;
       try { onClosed(connId); } catch (e) { log('closed failed', e); }
     },
+    // Public table summary for "tables nearby" (no private data).
+    summary() {
+      const host = members.find(isHost);
+      return {
+        host: host ? host.name : null,
+        players: members.filter((m) => m.connId != null).length,
+        playing: !!game,
+      };
+    },
     destroy() {
       destroyed = true;
       if (checkTimer != null) clearTimeout(checkTimer);

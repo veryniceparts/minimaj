@@ -37,6 +37,12 @@ press **Join table**. You are the host, so you choose the length and press
 the `http://192.168.x.x:7777` link. They must be on the same Wi-Fi, or on your
 phone's hotspot. **Stop server** in the lobby shuts the table down.
 
+**Joining a friend who also has the app.** On the home screen, under *or join a
+friend's table*, the app lists minimaj tables it finds on your Wi-Fi; tap one
+to join it. You can also type the **table code** shown in your friend's lobby
+(for example `AAJZ`) or their address (`192.168.1.23`). The app takes you to
+their table with your name filled in.
+
 **Online room.** Host the folder as a static site (see below), open it, press
 **Create room**, and share the code or link. The host's tab runs the game, so
 the host should keep it open.
@@ -45,8 +51,7 @@ the host should keep it open.
 again to discard. Buttons for **Chi / Pon / Kan / Ron / Tsumo / Riichi** appear
 when you can use them. After riichi your draws are discarded for you. The bar
 shows your waits when you are tenpai and warns you when you are furiten. The
-**•••** menu has sound, vibration, and *auto-pass* (skips call prompts, but
-never Ron).
+**•••** menu has sound (off by default) and the man-tile numeral style.
 
 ## Rules implemented
 

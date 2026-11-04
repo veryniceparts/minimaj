@@ -43,6 +43,9 @@ const roomPrelude = `
     room.message(id, m);
   };
   globalThis.__roomClosed = function (id) { room.closed(id); };
+  globalThis.__roomSummary = function () {
+    return JSON.stringify(typeof room.summary === 'function' ? room.summary() : {});
+  };
 })();
 `
 
@@ -183,15 +186,39 @@ func (s *Server) currentLANURLs() []string {
 	return urls
 }
 
+// roomSummary asks the JS room (on the loop goroutine) for its public summary.
+func (s *Server) roomSummary() map[string]any {
+	ch := make(chan map[string]any, 1)
+	s.loop.Submit(func(vm *goja.Runtime) {
+		out := map[string]any{}
+		if fn, ok := goja.AssertFunction(vm.Get("__roomSummary")); ok {
+			if v, err := fn(goja.Undefined()); err == nil {
+				_ = json.Unmarshal([]byte(v.String()), &out)
+			}
+		}
+		ch <- out
+	})
+	select {
+	case m := <-ch:
+		return m
+	case <-time.After(500 * time.Millisecond):
+		return map[string]any{}
+	}
+}
+
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
+	// Readable cross-origin so other minimaj pages on the LAN can find this
+	// table ("tables nearby"). It only exposes public, non-secret fields.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"server":  true,
 		"version": s.version,
 		"port":    s.port,
 		"lanUrls": s.currentLANURLs(), // re-read: Wi-Fi may have connected since startup
 		"hostOk":  isLoopback(r),
+		"table":   s.roomSummary(),
 	})
 }
 

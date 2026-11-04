@@ -81,6 +81,8 @@ public class ServerService extends Service {
             NotificationChannel ch = new NotificationChannel(CHANNEL, "Game server", NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("Shown while the minimaj game server is running");
             ch.setShowBadge(false);
+            ch.enableVibration(false); // the app never vibrates
+            ch.setSound(null, null);
             nm.createNotificationChannel(ch);
         }
         PendingIntent open = PendingIntent.getActivity(this, 0,

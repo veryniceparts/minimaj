@@ -9,6 +9,7 @@ import { installFakeClock } from './fakeclock.js';
 import { runRoomTests } from './room.test.js';
 import { runQrTests } from './qr.test.js';
 import { runNetTests } from './net.test.js';
+import { runLanTests } from './lan.test.js';
 
 // helpers: parse "123m456p789s11z" style (z: 1-7 = E S W N Wh G R) into tile ids
 function parse(str) {
@@ -138,6 +139,7 @@ t('optimized shanten matches the reference implementation', () => {
 
 n += runQrTests();
 n += runRoomTests();
+n += runLanTests();
 n += await runNetTests();
 
 // full bot games (on a fake clock: same results as real timers, no idle time)
