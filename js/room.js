@@ -188,6 +188,9 @@ export function createRoom(env) {
       if (!game) startGame();
     } else if (msg.cmd === 'lobby') {
       backToLobby();
+    } else if (msg.cmd === 'again') {
+      // "Play again" on the final standings: same people, fresh seats/dealer.
+      if (game && game.phase === 'over') { backToLobby(); startGame(); }
     }
   }
 

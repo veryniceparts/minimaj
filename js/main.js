@@ -560,6 +560,11 @@ function onGameClick(e) {
     const a = JSON.parse(btn.dataset.act);
     if (a.type === 'ui-riichi') { ui.riichiMode = !ui.riichiMode; ui.selected = null; table.update(view, ui); return; }
     if (a.type === 'ui-lobby') { if (session) session.backToLobby(); return; }
+    if (a.type === 'ui-again') {
+      btn.disabled = true; // one tap: the new game's first view replaces this card
+      if (session && session.playAgain) session.playAgain();
+      return;
+    }
     if (a.type === 'ui-leave') { leave(); return; }
     act(a);
     return;

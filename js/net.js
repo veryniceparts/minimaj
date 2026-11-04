@@ -568,6 +568,7 @@ export function createSession(opts, handlers) {
     start() { send({ t: 'lobby-cmd', cmd: 'start' }); },
     setSettings(s) { send({ t: 'lobby-cmd', cmd: 'settings', settings: s }); },
     backToLobby() { send({ t: 'lobby-cmd', cmd: 'lobby' }); },
+    playAgain() { send({ t: 'lobby-cmd', cmd: 'again' }); },
     close() { stop(); },
   };
 }

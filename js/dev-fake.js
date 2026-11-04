@@ -44,6 +44,7 @@ export function createSession(opts, h) {
     },
     setSettings(s) { if (closed) return; settings = { ...settings, ...s }; h.onLobby(lobby()); },
     backToLobby() { if (closed) return; stop(); h.onLobby(lobby()); },
+    playAgain() { if (closed) return; stop(); this.start(); },
     close() { closed = true; stop(); h.onConn('closed'); },
   };
 }

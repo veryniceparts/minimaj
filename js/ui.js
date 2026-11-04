@@ -156,7 +156,9 @@ export function resultHTML(v) {
   if (v.phase === 'over') {
     const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td class="nm">${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
     return `<div class="res over"><h2 class="big">Game over</h2><table class="scores final">${rows}</table>
-      <div class="btns">${v.isHost ? '<button class="act hot wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>' : '<p class="muted wait">Waiting for the host…</p>'}
+      <div class="btns">${v.isHost
+        ? '<button class="act hot wide" data-act=\'{"type":"ui-again"}\'>Play again</button><button class="act ghost wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>'
+        : '<p class="muted wait">Waiting for the host to play again…</p>'}
       ${PEEK_BTN.replace('class="act ghost', 'class="act ghost wide')}<button class="act ghost wide" data-act='{"type":"ui-leave"}'>Leave</button></div></div>`;
   }
   // .res is a grid on short landscape screens: hand + yaku left, scores + button right (see style.css)

@@ -216,6 +216,32 @@ export function runRoomTests() {
     r.room.destroy();
   });
 
+  t('play again restarts a finished game with the same people', () => {
+    const r = mk();
+    r.join('a', 'Alice', 'ca', true);
+    r.join('b', 'Bob', 'cb');
+    r.msg('a', { t: 'lobby-cmd', cmd: 'again' }); // no game yet: ignored
+    assert.ok(!r.last('a', 'view'));
+    r.msg('a', { t: 'lobby-cmd', cmd: 'start' });
+    let steps = 0;
+    const act = (id) => {
+      const v = r.last(id, 'view').view;
+      if (v.options && v.options.discard.length && v.turn === v.seat) r.msg(id, { t: 'act', a: { type: 'discard', tile: v.options.discard[0] } });
+      else if (v.claim) r.msg(id, { t: 'act', a: { type: 'pass' } });
+      else if (v.phase === 'end' && !v.ready.includes(v.seat)) r.msg(id, { t: 'act', a: { type: 'ready' } });
+    };
+    while (steps++ < 4000 && r.last('a', 'view').view.phase !== 'over') { act('a'); act('b'); clock.advance(50); r.msg('a', { t: 'ping', n: steps }); r.msg('b', { t: 'ping', n: steps }); }
+    assert.equal(r.last('a', 'view').view.phase, 'over');
+    r.msg('b', { t: 'lobby-cmd', cmd: 'again' }); // non-host refused
+    assert.equal(r.last('b', 'view').view.phase, 'over');
+    r.msg('a', { t: 'lobby-cmd', cmd: 'again' });
+    const va = r.last('a', 'view').view, vb = r.last('b', 'view').view;
+    assert.notEqual(va.phase, 'over');
+    assert.equal(va.players.filter((p) => p.kind === 'human').length, 2);
+    assert.ok(va.players.every((p) => p.score === 25000) && vb.phase === va.phase);
+    r.room.destroy();
+  });
+
   t('first dealer (seat 0) is random, computers included', () => {
     const dealers = { human: 0, bot: 0 };
     for (let i = 0; i < 60; i++) {
