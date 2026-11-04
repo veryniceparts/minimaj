@@ -27,7 +27,8 @@ const shuffle = (a, rng) => {
 export class Game {
   // players: [{name, kind:'human'|'bot'}] x4 in seat order (seat 0 = first East)
   constructor(players, opts = {}) {
-    this.players = players.map((p, i) => ({ name: p.name, kind: p.kind, seat: i, score: 25000 }));
+    // animal: the seat's mascot (index into js/animals.js), picked by the room; display only
+    this.players = players.map((p, i) => ({ name: p.name, kind: p.kind, seat: i, score: 25000, animal: Number.isInteger(p.animal) ? p.animal : i }));
     this.length = opts.length || 1; // 1 = East only, 2 = East + South
     this.botDelay = opts.botDelay ?? 700;
     this.onChange = opts.onChange || (() => {});
@@ -632,7 +633,7 @@ export class Game {
       wall: this.live ? this.live.length : 0,
       dora: this.dead ? this.doraIndicators() : [],
       players: this.players.map((p) => ({
-        name: p.name, kind: p.kind, score: p.score,
+        name: p.name, kind: p.kind, score: p.score, animal: p.animal,
         riichi: p.riichi || p.riichiPending,
         melds: p.melds, discards: p.discards, handCount: p.hand ? p.hand.length : 0,
       })),

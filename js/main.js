@@ -13,6 +13,8 @@ const store = {
 const prefs = {
   sound: store.get('minimaj-sound', '0') === '1', // off unless the player turns it on
   mankanji: store.get('minimaj-mankanji', '1') === '1',
+  // locked: your hand is kept sorted; unlocked: drag tiles into your own order
+  locktiles: store.get('minimaj-locktiles', '1') === '1',
 };
 const applyManNumerals = () => document.documentElement.classList.toggle('man-arabic', !prefs.mankanji);
 applyManNumerals();
@@ -45,7 +47,7 @@ let screen = 'home';
 let table = null;
 let view = null;
 let prev = null;      // previous view (for sounds)
-const ui = { riichiMode: false, selected: null, autoKey: null };
+const ui = { riichiMode: false, selected: null, autoKey: null, free: !prefs.locktiles };
 let sent = null;      // { view, t }: the action already sent for this view (no double submits)
 let startPending = false; // lobby Start pressed, game not shown yet
 let pointerType = 'mouse';
@@ -133,7 +135,7 @@ function toggleMenu(force) {
   const sw = (k, label) => `<button data-pref="${k}" class="${prefs[k] ? 'on' : ''}" aria-pressed="${prefs[k]}">${label}<span class="sw"></span></button>`;
   const swatch = ([id, short, full]) => `<button class="thm${id === theme ? ' on' : ''}" data-theme="${id}" role="radio" aria-checked="${id === theme}" aria-label="${full}" title="${full}">`
     + `<span class="sf"><i class="b"></i><i class="f"></i><i class="a"></i></span><span class="nm">${short}</span></button>`;
-  m.innerHTML = '<div class="mopts">' + sw('sound', 'Sound')
+  m.innerHTML = '<div class="mopts">' + sw('sound', 'Sound') + sw('locktiles', 'Lock tile order')
     + `<button data-menu="mannum">Man numbers<span class="val">${prefs.mankanji ? '一二三' : '1 2 3'}</span></button>`
     + (session ? `<hr><button class="leave" data-menu="leave">Leave table</button>` : '')
     // only on the device running the minimaj app's table
@@ -156,6 +158,7 @@ function toggleMenu(force) {
       b.classList.toggle('on', prefs[k]);
       b.setAttribute('aria-pressed', prefs[k]);
       if (k === 'sound' && prefs.sound) sfx.tick();
+      if (k === 'locktiles') { ui.free = !prefs.locktiles; if (table && view) table.update(view, ui); }
     } else if (b.dataset.menu === 'mannum') {
       prefs.mankanji = !prefs.mankanji;
       store.set('minimaj-mankanji', prefs.mankanji ? '1' : '0');

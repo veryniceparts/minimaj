@@ -1,7 +1,7 @@
 // Tests for js/room.js with a fake env and a manual clock.
 import assert from 'node:assert/strict';
 import { installFakeClock } from './fakeclock.js';
-import { createRoom, PROTO, MIN_PROTO } from '../js/room.js';
+import { createRoom, PROTO, MIN_PROTO, ANIMAL_COUNT } from '../js/room.js';
 
 export function runRoomTests() {
   const clock = installFakeClock();
@@ -272,6 +272,22 @@ export function runRoomTests() {
     r.join('a3', 'A', 'ca', true);
     assert.ok(r.last('a3', 'lobby') && !r.last('a3', 'view'), 'game ended, lobby shown');
     r.room.destroy();
+  });
+
+  t('every seat gets a distinct animal, the same on every screen', () => {
+    for (let k = 0; k < 20; k++) {
+      const r = mk({ botDelay: 100000 });
+      r.join('a', 'A', 'ca', true);
+      r.join('b', 'B', 'cb');
+      r.msg('a', { t: 'lobby-cmd', cmd: 'start' });
+      const va = r.last('a', 'view').view, vb = r.last('b', 'view').view;
+      const an = va.players.map((p) => p.animal);
+      assert.equal(an.length, 4);
+      assert.ok(an.every((x) => Number.isInteger(x) && x >= 0 && x < ANIMAL_COUNT), `animal ids ${an}`);
+      assert.equal(new Set(an).size, 4, `distinct ${an}`);
+      assert.deepEqual(vb.players.map((p) => p.animal), an, 'same assignment for every seat');
+      r.room.destroy();
+    }
   });
 
   clock.uninstall();

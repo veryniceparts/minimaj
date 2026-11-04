@@ -239,7 +239,7 @@ export const revealSeen = { play: 0, end: 0 };
 const VIEW_KEYS = ['phase', 'seat', 'round', 'kyoku', 'honba', 'sticks', 'length', 'dealer', 'turn', 'wall', 'dora',
   'players', 'hand', 'drawn', 'options', 'mustDiscard', 'claim', 'claimTile', 'lastDiscard', 'waits', 'furiten',
   'riichiLocked', 'event', 'result', 'ready', 'final', 'revealed'].sort().join();
-const PLAYER_KEYS = ['name', 'kind', 'score', 'riichi', 'melds', 'discards', 'handCount'].sort().join();
+const PLAYER_KEYS = ['name', 'kind', 'score', 'animal', 'riichi', 'melds', 'discards', 'handCount'].sort().join();
 // a seat's view must not contain other seats' concealed tiles, the wall or ura
 // indicators while the hand is played
 export function checkView(g, v, seat) {

@@ -535,6 +535,16 @@ summary { cursor: pointer; font-weight: 600; }
 .mymelds { display: flex; gap: calc(var(--hw) * .15); align-items: flex-end; }
 .mymelds:empty { display: none; }
 .mymelds .tile { --w: calc(var(--hw) * .74); }
+/* hand drag (unlocked): tiles can be dragged to a new place (js/ui.js, Table drag) */
+.handrow.free .tiles .tile, .handrow.free .drawn .tile { touch-action: none; }
+.handrow.free .tile:not(.can) { cursor: grab; }
+.handrow.dragging, .handrow.dragging .tile { cursor: grabbing; }
+.handrow .tile.drag {
+  z-index: 3; transition: filter .18s;
+  box-shadow: 0 calc(var(--w) * .09) 0 var(--tile-edge), 0 calc(var(--w) * .45) calc(var(--w) * .6) var(--tile-shadow);
+}
+.handrow.dragging .tile.can:hover { transform: none; }
+.handrow.settle .tile { transition: none !important; }
 
 /* ---------- wide / landscape: the table fills the screen, your hand sits on it ----------
    --S (opponent tile unit) is the device's short side, as in portrait, so turning
@@ -799,4 +809,85 @@ summary { cursor: pointer; font-weight: 600; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .ev { animation: evfade 1.5s linear forwards !important; }
   @keyframes evfade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+}
+
+/* animal avatars
+   One mascot per seat (js/animals.js), on the felt just outside a corner of the center
+   box, next to the start of that seat's info strip: you bottom-left, right seat
+   bottom-right, top seat top-right, left seat top-left. These corners stay free: each
+   pond spans only its own side of the center box. Yours is larger and the only one
+   that moves (idle moves from ui.js; a reaction when tapped); the others are small and still. */
+.ani {
+  --as: clamp(17px, calc(var(--S) * .058), 26px); --ag: calc(var(--S) * .012);
+  --ax: calc(var(--c) / 2 + var(--ag)); --ay: calc(var(--c) / 2 + var(--ag)); --acy: 50%;
+  position: absolute; width: var(--as); height: var(--as); pointer-events: none; z-index: 1;
+}
+.ani.a0, .ani.a3 { right: calc(50% + var(--ax)); }
+.ani.a1, .ani.a2 { left: calc(50% + var(--ax)); }
+.ani.a0, .ani.a1 { top: calc(var(--acy) + var(--ay)); }
+.ani.a2, .ani.a3 { top: calc(var(--acy) - var(--ay) - var(--as)); }
+.ani.a0, .ani.a3 { --ax: calc(var(--c) / 2 + var(--ag) * 1.6); }
+.ani:empty { display: none; }
+.ani svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 1px 1px rgba(var(--sh), .3)); }
+.ani .eh, .ani .hearts { display: none; }
+.ani .bd, .ani .ear, .ani .eo { transform-box: fill-box; }
+.ani .bd { transform-origin: 50% 92%; }
+.ani .ear { transform-origin: 80% 85%; }
+.ani .ear.er { transform-origin: 20% 85%; }
+.ani .eo { transform-origin: 50% 50%; }
+.ani.me {
+  --as: clamp(40px, calc(var(--S) * .145), 56px);
+  pointer-events: auto; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.ani.me::after {
+  content: ""; position: absolute; left: 22%; right: 22%; bottom: -3%; height: 9%; z-index: -1;
+  border-radius: 50%; background: rgba(var(--sh), .28);
+}
+@media (min-aspect-ratio: 5/4) {
+  .ani { --acy: var(--cy); }
+  /* your pond is wider than the center box here: the bottom corners sit beside it */
+  .ani.a0, .ani.a1 { --ax: calc(max(var(--c) / 2, var(--wme) * 4.975) + var(--ag) * 1.6); }
+  .ani.me { --as: clamp(30px, min(calc(var(--S) * .145), calc(var(--vh) - var(--barh) - 4px - var(--cy) - var(--c) / 2 - var(--ag) * 2 - var(--hw) * .24)), 56px); }
+}
+.ani.me.idle[data-move="blink"] .eo { animation: ani-blink .5s ease-in-out 2 alternate; }
+.ani.me.idle[data-move="ear"] .ear { animation: ani-ear .32s ease-in-out 4 alternate; }
+.ani.me.idle[data-move="ear"] .ear.er { animation-name: ani-ear-r; animation-delay: .08s; }
+.ani.me.idle[data-move="hop"] .bd { animation: ani-hop .62s cubic-bezier(.3, .7, .4, 1) 2; }
+.ani.me.idle[data-move="hop"]::after { animation: ani-shadow .62s cubic-bezier(.3, .7, .4, 1) 2; }
+.ani.me.idle[data-move="tilt"] .bd { animation: ani-tilt 1.3s var(--ease-out); }
+.ani.me.idle[data-move="wag"] .bd { animation: ani-wag 1s ease-in-out; }
+.ani.me.tap .bd { animation: ani-tap .75s var(--ease-pop); }
+.ani.me.tap::after { animation: ani-shadow .75s var(--ease-pop); }
+.ani.me.tap .eo { display: none; }
+.ani.me.tap .eh { display: inline; }
+.ani .hearts { position: absolute; left: 0; right: 0; top: -6%; height: 40%; pointer-events: none; }
+.ani.me.tap .hearts { display: block; }
+.ani .hearts svg { position: absolute; width: 30%; height: auto; fill: #ff7fa3; filter: none; opacity: 0; animation: ani-heart .8s var(--ease-out) forwards; }
+.ani .hearts svg:nth-child(1) { left: -8%; top: 30%; --hx: -40%; --hr: -18deg; }
+.ani .hearts svg:nth-child(2) { left: 35%; top: 0; width: 34%; --hx: 0%; --hr: 0deg; animation-delay: .08s; }
+.ani .hearts svg:nth-child(3) { right: -8%; top: 30%; --hx: 40%; --hr: 18deg; animation-delay: .16s; }
+@keyframes ani-blink { 0%, 55% { transform: none; } 100% { transform: scaleY(.1); } }
+@keyframes ani-ear { to { transform: rotate(-16deg); } }
+@keyframes ani-ear-r { to { transform: rotate(16deg); } }
+@keyframes ani-hop {
+  0% { transform: none; } 18% { transform: scale(1.08, .9); }
+  50% { transform: translateY(-22%) scale(.96, 1.05); } 82% { transform: scale(1.06, .93); } 100% { transform: none; }
+}
+@keyframes ani-shadow { 50% { transform: scaleX(.65); opacity: .55; } }
+@keyframes ani-tilt { 0% { transform: none; } 22%, 70% { transform: rotate(-12deg); } 100% { transform: none; } }
+@keyframes ani-wag { 0%, 100% { transform: none; } 20% { transform: rotate(8deg); } 45% { transform: rotate(-7deg); } 70% { transform: rotate(5deg); } 88% { transform: rotate(-2deg); } }
+@keyframes ani-tap {
+  0% { transform: none; } 15% { transform: scale(1.14, .84); }
+  45% { transform: translateY(-30%) scale(.94, 1.08) rotate(-6deg); } 70% { transform: scale(1.08, .92) rotate(3deg); } 100% { transform: none; }
+}
+@keyframes ani-heart {
+  0% { opacity: 0; transform: translateY(40%) scale(.4); } 30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--hx), -120%) rotate(var(--hr)) scale(1); }
+}
+/* tiny mascot next to names on the final standings */
+.nm .ani { position: relative; display: inline-block; vertical-align: -.3em; width: 1.35em; height: 1.35em; margin-right: .35em; left: auto; right: auto; top: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .ani.me.tap .bd { animation: ani-calm .5s ease-out !important; }
+  .ani.me.tap::after, .ani.me.tap .hearts { animation: none !important; display: none; }
+  @keyframes ani-calm { 0% { transform: scale(.92); opacity: .6; } 100% { transform: none; opacity: 1; } }
 }

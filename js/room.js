@@ -13,6 +13,18 @@ export const MIN_PROTO = 1;
 
 const MAX = 4;
 const BOT_NAMES = ['CPU Ume', 'CPU Take', 'CPU Matsu'];
+export const ANIMAL_COUNT = 20; // mascots in js/animals.js
+
+// n distinct random animal indices (one per seat), so every screen shows the same ones
+export function pickAnimals(n) {
+  const a = [];
+  for (let i = 0; i < ANIMAL_COUNT; i++) a.push(i);
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(Math.random() * (ANIMAL_COUNT - i));
+    const x = a[i]; a[i] = a[j]; a[j] = x;
+  }
+  return a.slice(0, n);
+}
 const TIMEOUT_MS = 9000;
 const CHECK_MS = 1000;
 const RATE_WINDOW_MS = 1000;
@@ -205,7 +217,8 @@ export function createRoom(env) {
     }
     seats = [0, 1, 2, 3].map((i) => order[i] || null);
     let b = 0;
-    const players = seats.map((m) => (m ? { name: m.name, kind: 'human' } : { name: BOT_NAMES[b++], kind: 'bot' }));
+    const animals = pickAnimals(4);
+    const players = seats.map((m, i) => ({ ...(m ? { name: m.name, kind: 'human' } : { name: BOT_NAMES[b++], kind: 'bot' }), animal: animals[i] }));
     const opts = { length: settings.length, onChange: () => markView() };
     if (env.botDelay != null) opts.botDelay = env.botDelay;
     game = new Game(players, opts);

@@ -2,6 +2,7 @@
 // in one shared Map, so a node can move between hand, pond and meld containers
 // and is animated with FLIP (Web Animations API, transform/opacity only).
 import { tileType, isRed, doraFromIndicator, WIND_CHARS } from './tiles.js';
+import { animalSVG, animalMoves, ANIMAL_NAMES } from './animals.js';
 
 const C = { man: '#c8445f', pin: '#3a6fbf', sou: '#26845b', red: '#e0435f', tile: '#fdf6ee' };
 const HONOR_CHAR = ['東', '南', '西', '北', '', '發', '中'];
@@ -10,21 +11,25 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 /* ---------------- tile faces (cached markup) ---------------- */
 
 const PIN = [[[50, 50]], [[50, 28], [50, 72]], [[28, 24], [50, 50], [72, 76]], [[30, 28], [70, 28], [30, 72], [70, 72]],
-  [[28, 24], [72, 24], [50, 50], [28, 76], [72, 76]], [[32, 20], [68, 20], [32, 50], [68, 50], [32, 80], [68, 80]],
+  [[28, 24], [72, 24], [50, 50], [28, 76], [72, 76]], [[32, 18], [68, 18], [32, 56], [68, 56], [32, 84], [68, 84]],
   [[24, 16], [50, 26], [76, 36], [32, 62], [68, 62], [32, 86], [68, 86]],
   [[32, 14], [68, 14], [32, 38], [68, 38], [32, 62], [68, 62], [32, 86], [68, 86]],
   [[22, 18], [50, 18], [78, 18], [22, 50], [50, 50], [78, 50], [22, 82], [50, 82], [78, 82]]];
 const SOU = { 2: [[50, 28], [50, 72]], 3: [[50, 28], [30, 72], [70, 72]], 4: [[30, 28], [70, 28], [30, 72], [70, 72]],
   5: [[26, 28], [74, 28], [50, 50], [26, 72], [74, 72]], 6: [[24, 28], [50, 28], [76, 28], [24, 72], [50, 72], [76, 72]],
   7: [[50, 14], [24, 50], [50, 50], [76, 50], [24, 84], [50, 84], [76, 84]],
-  8: [[20, 28], [40, 28], [60, 28], [80, 28], [20, 72], [40, 72], [60, 72], [80, 72]],
+  8: [[18, 30], [38, 30], [62, 30], [82, 30], [18, 72], [38, 72], [62, 72], [82, 72]],
   9: [[24, 16], [50, 16], [76, 16], [24, 50], [50, 50], [76, 50], [24, 84], [50, 84], [76, 84]] };
 const svg = (body) => `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${body}</svg>`;
 
 function pinSVG(n, red) {
   const r = n === 1 ? 21 : n <= 4 ? 14 : n <= 6 ? 12 : 10;
   return svg(PIN[n - 1].map(([x, y], i) => {
-    const c = red && n === 5 ? C.red : (n === 1 || (n === 5 && i === 2) || (n === 7 && i < 3)) ? C.man : (i % 2 ? C.sou : C.pin);
+    // Traditional colours keep look-alikes apart: 6-pin = 2 green over 4 red, 8-pin = all blue.
+    const c = red && n === 5 ? C.red
+      : n === 6 ? (i < 2 ? C.sou : C.man)
+      : n === 8 ? C.pin
+      : (n === 1 || (n === 5 && i === 2) || (n === 7 && i < 3)) ? C.man : (i % 2 ? C.sou : C.pin);
     return `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${c}" stroke-width="${r * 0.5}"/><circle cx="${x}" cy="${y}" r="${r * 0.32}" fill="${c}"/>`;
   }).join(''));
 }
@@ -33,10 +38,14 @@ function souSVG(n, red) {
   if (n === 1) {
     return svg(`<ellipse cx="50" cy="42" rx="22" ry="26" fill="${C.sou}"/><circle cx="42" cy="35" r="5" fill="#fff"/><path d="M36 66 L50 90 L64 66Z" fill="${C.man}"/>`);
   }
-  const h = n >= 7 ? 22 : 30;
+  const h = n === 7 || n === 9 ? 22 : 30;
+  // 8-sou: sticks lean into an "M" over a "W" (traditional), so it can't be mistaken for 6-sou
+  const SOU8_TILT = [-22, 22, -22, 22, 22, -22, 22, -22];
   return svg(SOU[n].map(([x, y], i) => {
-    const c = red && n === 5 ? C.red : (n === 9 && i % 3 === 1) || (n === 7 && i === 0) || (n === 5 && i === 2) ? C.man : C.sou;
-    return `<rect x="${x - 8}" y="${y - h / 2}" width="16" height="${h}" rx="8" fill="${c}"/><rect x="${x - 9}" y="${y - 1.6}" width="18" height="3.2" rx="1.6" fill="${C.tile}" opacity=".85"/>`;
+    const c = red && n === 5 ? C.red
+      : (n === 9 && i % 3 === 1) || (n === 7 && i === 0) || (n === 5 && i === 2) || (n === 6 && (i === 1 || i === 4)) ? C.man : C.sou;
+    const stick = `<rect x="${x - 8}" y="${y - h / 2}" width="16" height="${h}" rx="8" fill="${c}"/><rect x="${x - 9}" y="${y - 1.6}" width="18" height="3.2" rx="1.6" fill="${C.tile}" opacity=".85"/>`;
+    return n === 8 ? `<g transform="rotate(${SOU8_TILT[i]} ${x} ${y})">${stick}</g>` : stick;
   }).join(''));
 }
 
@@ -151,10 +160,12 @@ export function resultKey(v) {
 // closes the card to look at the table with every hand revealed (handled in Table, not main.js)
 const PEEK_BTN = '<button class="act ghost peekbtn" data-ui="close" title="Close and look at the table (Esc)">View table</button>';
 
+const miniAnimal = (p) => (p && p.animal != null ? `<span class="ani">${animalSVG(p.animal)}</span>` : '');
+
 export function resultHTML(v) {
   const r = v.result;
   if (v.phase === 'over') {
-    const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td class="nm">${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
+    const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td class="nm">${miniAnimal(v.players[f.seat])}${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
     return `<div class="res over"><h2 class="big">Game over</h2><table class="scores final">${rows}</table>
       <div class="btns">${v.isHost
         ? '<button class="act hot wide" data-act=\'{"type":"ui-again"}\'>Play again</button><button class="act ghost wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>'
@@ -214,9 +225,13 @@ function setCls(el, c) { if (el.className !== c) el.className = c; }
 // restart a CSS entry animation (.in) on an element
 function replayIn(el) { el.classList.remove('in'); void el.offsetWidth; el.classList.add('in'); }
 
+const HEART = '<svg viewBox="0 0 10 9" aria-hidden="true"><path d="M5 8.6C-1.4 4.6.4-.9 5 2.3 9.6-.9 11.4 4.6 5 8.6Z"/></svg>';
+const HEARTS = `<span class="hearts">${HEART}${HEART}${HEART}</span>`;
+
 const TABLE_HTML = `
   <div id="table"><div id="wrap"><div id="board">
     <div class="center"><div class="round"></div><div class="sub"></div><div class="dora"></div></div>
+    ${[0, 1, 2, 3].map((r) => `<span class="ani a${r}${r ? '' : ' me'}"></span>`).join('')}
     ${[0, 1, 2, 3].map((r) => `<div class="layer r${r}">
       <div class="info"><div class="txt"><span class="wind"></span><span class="score"></span><span class="stick" hidden></span><span class="pname"></span></div></div>
       <div class="pond"></div>
@@ -256,7 +271,12 @@ export class Table {
       if (b && b.dataset.ui === 'close') this.setPeek(true);
       else if (b && b.dataset.ui === 'open') this.setPeek(false);
       else if (e.target === this.el.modal && this.resKey) this.setPeek(true); // tap on the backdrop
+      else if (e.target.closest('.ani.me')) this.animalMove('tap');
     }, { signal: this.off.signal });
+    this.anis = [0, 1, 2, 3].map((r) => q(`.ani.a${r}`));
+    this.idleTimer = null;
+    this.idleEnd = null;
+    this.scheduleIdle();
     this.layers = [0, 1, 2, 3].map((r) => {
       const L = q(`.layer.r${r}`);
       const o = {
@@ -268,17 +288,66 @@ export class Table {
       return o;
     });
     this.el.hand._ang = this.el.drawn._ang = this.el.mymelds._ang = 0;
+    this.el.handbox = q('#hand');
+    this.el.handrow = q('#hand .handrow');
+    // unlocked tiles (ui.free): your own order of hand ids, client-side only
+    this.order = null;
+    this.drag = null;
+    this.setupDrag();
     current = this;
   }
 
   // The screen is leaving the table: drop listeners, animations and tile nodes.
   destroy() {
     this.off.abort();
+    clearTimeout(this.idleTimer);
+    clearTimeout(this.idleEnd);
+    this.idleTimer = this.idleEnd = null;
+    this.drag = null;
     for (const a of this.anims) a.cancel();
     this.anims.clear();
     this.nodes.clear();
     this.v = null;
     if (current === this) current = null;
+  }
+
+  /* ---- your animal: an idle move every 6-15 s, a happy hop when tapped ---- */
+  scheduleIdle() {
+    clearTimeout(this.idleTimer);
+    if (this.off.signal.aborted) return;
+    this.idleTimer = setTimeout(() => {
+      if (!reduceMotion.matches && !document.hidden) {
+        const moves = animalMoves(this.anis[0]._k);
+        this.animalMove(moves[Math.floor(Math.random() * moves.length)]);
+      }
+      this.scheduleIdle();
+    }, 6000 + Math.random() * 9000);
+  }
+
+  // move: an idle move name (data-move) or 'tap'; restarts the CSS animation
+  animalMove(move) {
+    const el = this.anis[0];
+    if (!el.firstChild || this.off.signal.aborted) return;
+    if (move !== 'tap' && el.classList.contains('tap')) return; // let the reaction finish
+    clearTimeout(this.idleEnd);
+    el.classList.remove('idle', 'tap');
+    void el.offsetWidth;
+    if (move === 'tap') {
+      el.classList.add('tap');
+      this.scheduleIdle(); // no idle move right after a tap
+    } else {
+      el.dataset.move = move;
+      el.classList.add('idle');
+    }
+    this.idleEnd = setTimeout(() => el.classList.remove('idle', 'tap'), move === 'tap' ? 1000 : 1400);
+  }
+
+  patchAnimal(r, p) {
+    const el = this.anis[r];
+    if (el._k === p.animal) return;
+    el._k = p.animal;
+    el.innerHTML = p.animal == null ? '' : animalSVG(p.animal) + (r ? '' : HEARTS);
+    el.title = p.animal == null ? '' : ANIMAL_NAMES[p.animal % ANIMAL_NAMES.length];
   }
 
   setPeek(on) {
@@ -336,10 +405,12 @@ export class Table {
     this.ui = ui;
     const dealKey = `${v.round}:${v.kyoku}:${v.honba}:${v.dora.length ? v.dora[0] : ''}`;
     const animate = this.dealKey === dealKey && !reduceMotion.matches && !document.hidden && typeof Element.prototype.animate === 'function';
+    if (this.dealKey !== dealKey) { this.order = null; this.endDrag(false, true); } // a new deal: back to the dealt order
     this.dealKey = dealKey;
 
     // FIRST: where every connected tile is now (mid-animation positions included)
     const before = animate ? this.measure(v.seat) : null;
+    if (this.settleDrag) { this.settleDrag(); this.settleDrag = null; } // a drop: clear the drag offsets after FIRST
     for (const a of this.anims) a.cancel();
     this.anims.clear();
 
@@ -394,6 +465,7 @@ export class Table {
     setText(L.score, p.score);
     if (L.stick.hidden === !!p.riichi) L.stick.hidden = !p.riichi;
     setText(L.pname, p.name);
+    this.patchAnimal(r, p);
 
     const hl = v.claimTile ? v.claimTile.from === s : v.lastDiscard && v.lastDiscard.seat === s;
     const list = [];
@@ -434,13 +506,146 @@ export class Table {
     const mods = (id) => {
       let c = allowed ? (allowed.has(id) ? 'can' : 'dim') : '';
       if (ui.selected === id) c += ' sel';
+      if (this.drag && this.drag.on && this.drag.id === id) c += ' drag';
       return c;
     };
-    this.place(this.el.hand, v.hand.map((id) => [this.node('t' + id, id), mods(id)]));
-    this.place(this.el.drawn, v.drawn != null ? [[this.node('t' + v.drawn, v.drawn), mods(v.drawn)]] : []);
+    let hand = v.hand;
+    let drawn = v.drawn;
+    if (ui.free) {
+      // reconcile your order: drop tiles that left (discards, calls), add new ones at
+      // the right end. The drawn tile keeps its own slot until you drag it in (or
+      // discard another tile, which brings it in at the end).
+      const inHand = new Set(v.hand);
+      const order = (this.order || []).filter((id) => inHand.has(id) || id === v.drawn);
+      const have = new Set(order);
+      for (const id of v.hand) if (!have.has(id)) order.push(id);
+      this.order = order;
+      hand = order;
+      if (drawn != null && have.has(drawn)) drawn = null;
+    } else this.order = null;
+    if (this.drag && (!ui.free || ![...hand, drawn].includes(this.drag.id))) this.endDrag(false, true);
+    this.el.handrow.classList.toggle('free', !!ui.free);
+    this.place(this.el.hand, hand.map((id) => [this.node('t' + id, id), mods(id)]));
+    this.place(this.el.drawn, drawn != null ? [[this.node('t' + drawn, drawn), mods(drawn)]] : []);
+    if (this.drag && this.drag.on) this.dragLayout();
     this.placeMelds(this.el.mymelds, v.players[v.seat].melds, v.seat);
     this.el.bar.classList.toggle('myturn', !!(v.options || v.claim));
     this.el.bar.classList.toggle('riichimode', !!ui.riichiMode);
+  }
+
+  /* ---------- unlocked tiles (ui.free): drag a tile to a new place in your hand ----------
+     A press only becomes a drag after DRAG_MIN px, so a plain click / tap still
+     discards or lifts as before; a drag never clicks. While dragging, the tile
+     follows the pointer and the others slide apart (transforms only); the drop
+     re-renders with the usual FLIP. */
+  setupDrag() {
+    const DRAG_MIN = 7;
+    const signal = this.off.signal;
+    this.dragUntil = 0;
+    this.el.handbox.addEventListener('pointerdown', (e) => {
+      if (!this.ui || !this.ui.free || this.drag || !e.isPrimary) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const t = e.target.closest('.tile[data-id]');
+      if (!t || (t.parentNode !== this.el.hand && t.parentNode !== this.el.drawn)) return;
+      const box = this.el.handbox.getBoundingClientRect();
+      this.drag = {
+        id: +t.dataset.id, el: t, pid: e.pointerId, on: false, slot: null,
+        fromDrawn: t.parentNode === this.el.drawn,
+        x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+        // grab point, relative to the tile's untransformed spot
+        gx: e.clientX - box.left - t.offsetLeft, gy: e.clientY - box.top - t.offsetTop,
+      };
+    }, { signal });
+    window.addEventListener('pointermove', (e) => {
+      const d = this.drag;
+      if (!d || e.pointerId !== d.pid) return;
+      d.x = e.clientX; d.y = e.clientY;
+      if (!d.on) {
+        if (Math.hypot(d.x - d.x0, d.y - d.y0) < DRAG_MIN) return;
+        this.startDrag();
+      }
+      if (e.cancelable) e.preventDefault();
+      this.dragLayout();
+    }, { signal });
+    const up = (commit) => (e) => { if (this.drag && e.pointerId === this.drag.pid) this.endDrag(commit && this.drag.on); };
+    window.addEventListener('pointerup', up(true), { signal });
+    window.addEventListener('pointercancel', up(false), { signal });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.drag && this.drag.on) { e.stopImmediatePropagation(); this.endDrag(false); }
+    }, { capture: true, signal });
+    // the click that ends a drag must not reach main.js (it would discard)
+    window.addEventListener('click', (e) => {
+      if (performance.now() - this.dragUntil < 350) { this.dragUntil = 0; e.stopImmediatePropagation(); e.preventDefault(); }
+    }, { capture: true, signal });
+  }
+
+  startDrag() {
+    const d = this.drag;
+    d.on = true;
+    try { this.el.handbox.setPointerCapture(d.pid); } catch { /* pointer already gone */ }
+    // a running FLIP would hold the tiles in place
+    for (const a of this.anims) {
+      if (a.effect && this.el.handrow.contains(a.effect.target)) { a.cancel(); this.anims.delete(a); }
+    }
+    if (this.ui.selected != null) {
+      this.ui.selected = null;
+      for (const el of this.el.handrow.querySelectorAll('.tile.sel')) el.classList.remove('sel');
+    }
+    d.el.classList.add('drag');
+    this.el.handrow.classList.add('dragging');
+  }
+
+  // dragged tile under the pointer; the others open a gap at the drop slot
+  dragLayout() {
+    const d = this.drag;
+    const box = this.el.handbox.getBoundingClientRect();
+    const kids = [...this.el.hand.children];
+    const others = kids.filter((el) => el !== d.el);
+    const pitch = kids.length > 1 ? kids[1].offsetLeft - kids[0].offsetLeft : d.el.offsetWidth * 1.06;
+    const x0 = kids.length ? kids[0].offsetLeft : d.el.offsetLeft;
+    const left = d.x - d.gx - box.left;
+    const top = d.y - d.gy - box.top;
+    const n = others.length;
+    const raw = (left - x0) / pitch;
+    // the drawn tile joins the hand once it is moved onto it; past the end it stays apart
+    d.slot = d.fromDrawn && raw > n + 0.15 ? null : Math.max(0, Math.min(n, Math.round(raw)));
+    const from = d.fromDrawn ? n : kids.indexOf(d.el);
+    others.forEach((el, k) => {
+      const was = k < from ? k : k + 1;
+      const now = d.slot == null ? was : k < d.slot ? k : k + 1;
+      const dx = d.fromDrawn && d.slot == null ? 0 : (now - was) * pitch;
+      const tf = dx ? `translateX(${dx}px)` : '';
+      if (el.style.transform !== tf) el.style.transform = tf;
+    });
+    d.el.style.transform = `translate(${left - d.el.offsetLeft}px, ${top - d.el.offsetTop}px) scale(1.06)`;
+  }
+
+  // commit: move the tile to its drop slot; otherwise everything slides back.
+  // quiet: from inside update() (no re-render of our own).
+  endDrag(commit, quiet) {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    if (!d.on) return;
+    this.dragUntil = performance.now();
+    try { this.el.handbox.releasePointerCapture(d.pid); } catch { /* released */ }
+    if (commit && d.slot != null && this.order) {
+      const order = this.order.filter((id) => id !== d.id);
+      order.splice(d.slot, 0, d.id);
+      this.order = order;
+    }
+    const row = this.el.handrow;
+    const settle = () => {
+      row.classList.add('settle'); // no CSS transitions while the offsets go: FLIP animates instead
+      for (const el of row.querySelectorAll('.tiles .tile, .drawn .tile')) el.style.transform = '';
+      d.el.classList.remove('drag');
+      row.classList.remove('dragging');
+      void row.offsetWidth;
+      requestAnimationFrame(() => requestAnimationFrame(() => row.classList.remove('settle')));
+    };
+    if (quiet || !this.v) { settle(); return; }
+    this.settleDrag = settle;
+    this.update(this.v, this.ui);
   }
 
   // hint + buttons (only rewritten when they change)
