@@ -166,7 +166,10 @@ export function createRoom(env) {
   }
 
   function startGame() {
-    const order = members.slice();
+    // Shuffle all four seats, empty ones (computers) included, so the first
+    // dealer (seat 0, East / oya) is random — not always a human.
+    const order = members.slice(0, 4);
+    while (order.length < 4) order.push(null);
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       const x = order[i]; order[i] = order[j]; order[j] = x;

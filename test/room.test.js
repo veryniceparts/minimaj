@@ -185,6 +185,20 @@ export function runRoomTests() {
     r.room.destroy();
   });
 
+  t('first dealer (seat 0) is random, computers included', () => {
+    const dealers = { human: 0, bot: 0 };
+    for (let i = 0; i < 60; i++) {
+      const r = mk({ botDelay: 100000 });
+      r.join('a', 'A', 'ca', true);
+      r.msg('a', { t: 'lobby-cmd', cmd: 'start' });
+      const v = r.last('a', 'view').view;
+      dealers[v.players[0].kind]++;
+      r.room.destroy();
+    }
+    // 1 human + 3 computers: the human should be oya about 1 time in 4
+    assert.ok(dealers.human > 0 && dealers.bot > 0, JSON.stringify(dealers));
+  });
+
   t('empty table returns to lobby after 60s', () => {
     const r = mk({ botDelay: 100000 });
     r.join('a', 'A', 'ca', true);

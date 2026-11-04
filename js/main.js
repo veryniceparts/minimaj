@@ -413,11 +413,11 @@ function showLobby(l) {
     ${l.isHost ? `
       <div class="lenrow"><label>Length</label>
       <div class="seg" id="len">
-        <button class="chip${len === 1 ? ' on' : ''}" data-len="1">East round</button>
-        <button class="chip${len === 2 ? ' on' : ''}" data-len="2">Half game</button>
+        <button class="chip${len === 1 ? ' on' : ''}" data-len="1" title="East round only (tonpuu)">Short · 東</button>
+        <button class="chip${len === 2 ? ' on' : ''}" data-len="2" title="East and South rounds (hanchan)">Long · 東南</button>
       </div></div>
       <button class="act hot wide" id="start">Start${n < 4 ? ` · ${4 - n} computer${n === 3 ? '' : 's'}` : ''}</button>`
-    : `<p class="muted" style="text-align:center">${len === 2 ? 'Half game' : 'East round'} · waiting for the host to start…</p>`}
+    : `<p class="muted" style="text-align:center">${len === 2 ? 'Long game (東南)' : 'Short game (東)'} · waiting for the host to start…</p>`}
     <div class="btnrow"><button class="act ghost wide" id="leave">Leave</button>
     ${l.isHost && l.mode === 'lan' && info ? `<button class="act danger wide${stopArmed ? ' armed' : ''}" id="stop">${stopArmed ? 'Tap again to stop' : 'Stop server'}</button>` : ''}</div></div>
   </div>`;

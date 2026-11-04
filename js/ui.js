@@ -1,7 +1,7 @@
 // Table rendering. The game DOM is built once; tile nodes are keyed by tile id
 // in one shared Map, so a node can move between hand, pond and meld containers
 // and is animated with FLIP (Web Animations API, transform/opacity only).
-import { tileType, isRed, doraFromIndicator, WIND_CHARS, WIND_NAMES } from './tiles.js';
+import { tileType, isRed, doraFromIndicator, WIND_CHARS } from './tiles.js';
 
 const C = { man: '#c8445f', pin: '#3a6fbf', sou: '#26845b', red: '#e0435f', tile: '#fdf6ee' };
 const HONOR_CHAR = ['東', '南', '西', '北', '', '發', '中'];
@@ -91,8 +91,9 @@ function meldHTML(m, owner, ds = null) {
   return `<span class="meld">${meldOrder(m, owner).map(([id, c]) => (c === 'back' ? tileHTML(null) : tileHTML(id, c, ds))).join('')}</span>`;
 }
 
+// Round label in kanji, as on a real table: 東1局, 南3局 …
 export function roundName(v) {
-  return `${WIND_NAMES[v.round]} ${v.kyoku + 1}`;
+  return `${WIND_CHARS[v.round]}${v.kyoku + 1}局`;
 }
 
 /* ---------------- action bar / modal markup ---------------- */
