@@ -23,7 +23,14 @@ const SOU = { 2: [[50, 28], [50, 72]], 3: [[50, 28], [30, 72], [70, 72]], 4: [[3
 const svg = (body) => `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${body}</svg>`;
 
 function pinSVG(n, red) {
-  const r = n === 1 ? 21 : n <= 4 ? 14 : n <= 6 ? 12 : 10;
+  if (n === 1) {
+    // Traditional 1-pin: a big blue ring around a green ring with a small red heart,
+    // so it never reads as an all-red ("red five"-style) tile.
+    return svg(`<circle cx="50" cy="50" r="30" fill="none" stroke="${C.pin}" stroke-width="10"/>`
+      + `<circle cx="50" cy="50" r="18" fill="none" stroke="${C.sou}" stroke-width="7"/>`
+      + `<circle cx="50" cy="50" r="7" fill="${C.man}"/>`);
+  }
+  const r = n <= 4 ? 14 : n <= 6 ? 12 : 10;
   return svg(PIN[n - 1].map(([x, y], i) => {
     // Traditional colours keep look-alikes apart: 6-pin = 2 green over 4 red, 8-pin = all blue.
     const c = red && n === 5 ? C.red
