@@ -225,10 +225,13 @@ const DEFS = [
     const k = '#3a3446', d = '#5f5872';
     return P('M14 48Q32 60 50 48Q49 56 32 57.6Q15 56 14 48Z', '#d9e7a0', ol('#9fb35c', 1.2))
       + head('#fbfaf6', d, 20, 18.4, 35)
-      + P('M12 35Q12.4 16.6 32 16.6Q51.6 16.6 52 35Q47 30 41 30.6Q36 31 32 35Q28 31 23 30.6Q17 30 12 35Z', k)
-      + P('M28.6 42Q32 40.4 35.4 42L34.4 53.4Q32 55.4 29.6 53.4Z', k)
+      // cap with a gently curved lower edge (no point down the middle)
+      + P('M12 35Q12.4 16.6 32 16.6Q51.6 16.6 52 35Q46 30.4 39 30.2Q32 30.6 25 30.2Q18 30.4 12 35Z', k)
+      // short bib stripe on the chest, separated from the beak by white
+      + P('M29.8 46.4Q32 45.2 34.2 46.4L33.4 54.4Q32 55.8 30.6 54.4Z', k)
       + eyes({ dx: 8, y: 30.6, r: 3, light: true })
-      + P('M30 38.2Q32 37 34 38.2L32 41.6Z', '#4a4458')
+      // small grey beak, outlined so it reads as a beak (not a black stripe)
+      + P('M29.6 37.6Q32 36.2 34.4 37.6L32 41.8Z', '#6a6380', ol('#fbfaf6', 0.8))
       + cheeks(41.6, 11.8, 0.5);
   }],
   ['Sparrow', () => {
