@@ -874,7 +874,8 @@ summary { cursor: pointer; font-weight: 600; }
 .an .eh, .an .ex, .an .es, .an .lkl, .an .lkr { display: none; }
 .emo .an .eo { display: none; }
 .emo.emo-go .an .eh, .emo.emo-hurray .an .ex, .emo.emo-sad .an .es,
-.emo.emo-think-left .an .lkl, .emo.emo-think-right .an .lkr { display: inline; }
+.emo.emo-think-left .an .lkl, .emo.emo-think-right .an .lkr,
+.emo.emo-pat-left .an .lkl, .emo.emo-pat-right .an .lkr { display: inline; }
 .ani { --es: var(--as); }
 .ani.emo { z-index: 4; }
 .an .tear { transform-box: fill-box; transform-origin: 50% 0; }
@@ -888,6 +889,38 @@ summary { cursor: pointer; font-weight: 600; }
 .emo-sad .tear { animation: emo-tear 1.6s ease-in .12s both; }
 .emo-think-left .bd { animation: emo-think-l 1.8s var(--ease-out) forwards; }
 .emo-think-right .bd { animation: emo-think-r 1.8s var(--ease-out) forwards; }
+/* local only (end-of-hand celebration): lean toward the loser and pat-pat, with hearts */
+.emo-pat-left .bd { animation: emo-pat-l 1.8s ease-in-out forwards; }
+.emo-pat-right .bd { animation: emo-pat-r 1.8s ease-in-out forwards; }
+@keyframes emo-pat-l {
+  0%, 100% { transform: none; } 14% { transform: translateX(-12%) rotate(-16deg); }
+  26%, 50% { transform: translateX(-12%) translateY(6%) rotate(-12deg) scale(1.04, .95); } 38%, 62% { transform: translateX(-12%) rotate(-16deg); }
+  85% { transform: translateX(-10%) rotate(-14deg); }
+}
+@keyframes emo-pat-r {
+  0%, 100% { transform: none; } 14% { transform: translateX(12%) rotate(16deg); }
+  26%, 50% { transform: translateX(12%) translateY(6%) rotate(12deg) scale(1.04, .95); } 38%, 62% { transform: translateX(12%) rotate(16deg); }
+  85% { transform: translateX(10%) rotate(14deg); }
+}
+.emo-fx .ht { width: 30%; height: 30%; top: -18%; fill: #ff8fab; animation: emo-heart 1.3s var(--ease-out) .25s forwards; }
+.emo-pat-left .emo-fx .ht { left: -22%; }
+.emo-pat-right .emo-fx .ht { right: -22%; }
+.emo-fx .ht:nth-child(2) { top: 18%; width: 22%; height: 22%; animation-delay: .55s; fill: #ffb3c7; }
+@keyframes emo-heart { 0% { opacity: 0; transform: scale(.2); } 25% { opacity: 1; transform: scale(1.15); } 70% { opacity: 1; transform: translateY(-40%); } 100% { opacity: 0; transform: translateY(-90%) scale(.8); } }
+/* the paw that pats the loser's head (ui.js Table.patOn) */
+.cb-pat { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.cb-pat i { position: absolute; display: block; opacity: 0; }
+.cb-pat svg { display: block; width: 100%; height: 100%; filter: none; }
+.cb-pat .pw { left: 22%; top: -46%; width: 56%; height: 56%; fill: #ffe3d0; filter: drop-shadow(0 1px 0 rgba(59, 47, 69, .5)); animation: cb-paw 1.3s ease-in-out forwards; }
+.cb-pat .ht { width: 28%; height: 28%; fill: #ff8fab; animation: emo-heart 1.2s var(--ease-out) forwards; }
+.cb-pat .ht:nth-child(2) { left: -16%; top: -10%; animation-delay: .25s; }
+.cb-pat .ht:nth-child(3) { right: -16%; top: -18%; animation-delay: .45s; fill: #ffb3c7; }
+.cb-pat .ht:nth-child(4) { left: 40%; top: -40%; animation-delay: .7s; width: 22%; height: 22%; }
+@keyframes cb-paw {
+  0% { opacity: 0; transform: translateY(-30%) rotate(-10deg); } 12% { opacity: 1; }
+  25%, 55% { transform: translateY(12%) rotate(4deg); } 40%, 70% { transform: translateY(-8%) rotate(-6deg); }
+  85% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-20%); }
+}
 .ani.me.emo-go::after { animation: ani-shadow .5s var(--ease-pop) 2; }
 .ani.me.emo-hurray::after { animation: ani-shadow .75s cubic-bezier(.3, .7, .4, 1) 2; }
 @keyframes emo-go {
@@ -994,7 +1027,7 @@ summary { cursor: pointer; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   /* no moves: the face and the words, fading in and out */
   .emo .bd, .emo .ear, .emo .tear, .emo::after { animation: none !important; }
-  .emo .emo-fx { display: none; }
+  .emo .emo-fx, .cb-pat { display: none; }
   .emo .bub { animation: emo-fade 1.8s linear forwards !important; }
   @keyframes emo-fade { 0% { opacity: 0; } 12%, 85% { opacity: 1; } 100% { opacity: 0; } }
 }
@@ -1025,3 +1058,139 @@ summary { cursor: pointer; font-weight: 600; }
   @keyframes mav-fade { from { opacity: .3; } to { opacity: 1; } }
 }
 @media (max-width: 400px) { .seats .reroll .lw { display: none; } }
+
+/* ---------- end-of-hand celebration (ui.js celebHTML) ----------
+   On the center box, before the result card: a banner ("Tsumo!", "Ron!", "Ryuukyoku")
+   with the winning tile flying in from the winner's side, confetti and stars (rays for
+   mangan and up), or soft rain for a draw. Everything is placed from #celeb's origin
+   (the table's center) in --S units; transform and opacity only. */
+#celeb { position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 3; pointer-events: none; }
+@media (min-aspect-ratio: 5/4) { #celeb { top: var(--cy); } }
+#celebskip { position: fixed; inset: 0; z-index: 9; cursor: pointer; }
+.cb { position: absolute; left: 0; top: 0; --out: 2.26s; animation: cb-out .34s ease-in var(--out) forwards; }
+.cb.limit, .cb.yakuman { --out: 2.56s; }
+.cb.draw { --out: 1.96s; }
+.cb > * { position: absolute; left: 0; top: 0; }
+.cb-banner {
+  translate: -50% -50%; display: flex; flex-direction: column; align-items: center; gap: max(4px, calc(var(--S) * .014));
+  white-space: nowrap; animation: cb-in .55s var(--ease-pop) both;
+}
+.cb-big {
+  --bb: var(--ok); --bi: var(--ok-ink);
+  font: 900 clamp(34px, calc(var(--S) * .14), 80px)/1 var(--round); letter-spacing: .01em;
+  padding: .13em .5em .17em; border-radius: 999px; background: var(--bb); color: var(--bi);
+  box-shadow: 0 0 0 max(3px, .065em) var(--tile), 0 .14em .34em rgba(var(--sh), .45);
+  animation: cb-wobble 1.1s ease-in-out .5s 2;
+}
+.cb.ron .cb-big { --bb: var(--accent); --bi: var(--accent-ink); }
+.cb-sub {
+  display: flex; align-items: center; gap: .4em;
+  font: 800 clamp(12px, calc(var(--S) * .04), 18px)/1.1 var(--round); color: var(--text);
+  background: var(--bg-1); padding: .38em .9em .4em; border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--line), 0 .3em .8em rgba(var(--sh), .35);
+  animation: cb-rise .45s var(--ease-pop) .18s both;
+}
+.cb-ani { width: 1.5em; height: 1.5em; margin: -.25em 0 -.2em -.35em; flex: none; }
+.cb-ani svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.cb-from { color: var(--muted); font-weight: 700; }
+.cb-limit {
+  font: 900 clamp(16px, calc(var(--S) * .06), 30px)/1 var(--round); letter-spacing: .02em;
+  padding: .2em .65em .24em; border-radius: 999px; background: var(--turn); color: var(--turn-ink);
+  box-shadow: 0 0 0 max(2px, .08em) var(--tile), 0 0 1.2em rgba(var(--turn-rgb), .7);
+  animation: cb-limit .6s var(--ease-pop) .42s both, cb-beat .5s ease-in-out 1.05s 3 alternate;
+}
+.cb.yakuman .cb-limit { font-size: clamp(20px, calc(var(--S) * .075), 36px); }
+/* the winning tile, glowing, flown in from the winner's side (--fx/--fy: unit vector) */
+.cb-tile { position: relative; animation: cb-fly .7s cubic-bezier(.2, .9, .3, 1.15) .05s both; }
+.cb-tile .tile {
+  --w: clamp(22px, calc(var(--S) * .072), 40px); margin: 0;
+  box-shadow: 0 calc(var(--w) * .08) 0 var(--tile-edge), 0 0 0 max(2px, calc(var(--w) * .07)) rgba(var(--turn-rgb), .95), 0 0 calc(var(--w) * .7) calc(var(--w) * .12) rgba(var(--turn-rgb), .75);
+}
+.cb-tile::before {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 260%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(var(--turn-rgb), .55), rgba(var(--turn-rgb), 0));
+  animation: cb-halo 1.1s ease-in-out .55s 2 alternate both;
+}
+.cb-dim {
+  width: calc(var(--S) * 1.25); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(var(--sh), .5) 35%, rgba(var(--sh), 0));
+  animation: cb-dim .4s var(--ease-out) both;
+}
+@keyframes cb-dim { from { opacity: 0; } }
+.cb-glow {
+  width: calc(var(--S) * .95); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(var(--ok-rgb), .42), rgba(var(--ok-rgb), 0));
+  animation: cb-glow .8s var(--ease-out) both;
+}
+.cb.ron .cb-glow { background: radial-gradient(closest-side, rgba(var(--accent-rgb), .42), rgba(var(--accent-rgb), 0)); }
+.cb.limit .cb-glow, .cb.yakuman .cb-glow { background: radial-gradient(closest-side, rgba(var(--turn-rgb), .5), rgba(var(--turn-rgb), 0)); }
+.cb-rays {
+  width: calc(var(--S) * 1.15); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+  background: repeating-conic-gradient(rgba(var(--turn-rgb), .3) 0 8deg, rgba(var(--turn-rgb), 0) 8deg 22.5deg);
+  -webkit-mask: radial-gradient(closest-side, #000 25%, transparent); mask: radial-gradient(closest-side, #000 25%, transparent);
+  animation: cb-glow .7s var(--ease-out) both, cb-spin 9s linear infinite;
+}
+.cb-conf i {
+  position: absolute; left: 0; top: 0; width: max(6px, calc(var(--S) * .018)); height: max(9px, calc(var(--S) * .028));
+  margin: -5px 0 0 -3px; border-radius: 2px; background: var(--c); opacity: 0;
+  animation: cb-conf 1.75s cubic-bezier(.12, .75, .35, 1) calc(.08s + var(--d)) forwards;
+}
+.cb-conf i.rd { border-radius: 50%; height: max(6px, calc(var(--S) * .018)); }
+.cb-stars i {
+  position: absolute; left: 0; top: 0; width: max(12px, calc(var(--S) * .045)); aspect-ratio: 1; margin: -6px 0 0 -6px;
+  translate: calc(var(--x) * var(--S)) calc(var(--y) * var(--S)); fill: #ffd35c; opacity: 0;
+  animation: cb-star .9s var(--ease-out) var(--d) 2 both;
+}
+.cb-stars i:nth-child(3n + 2) { fill: #fff3a8; }
+.cb-stars i:nth-child(3n) { fill: #ff9ec0; }
+.cb-stars svg { display: block; width: 100%; height: 100%; }
+/* draw: calm, a soft rain */
+.cb.draw .cb-banner { animation: cb-soft .6s var(--ease-out) both; }
+.cb.draw .cb-big {
+  --bb: var(--back); --bi: var(--back-ink); font-size: clamp(28px, calc(var(--S) * .11), 60px); font-weight: 800;
+  animation: cb-sway 2s ease-in-out .4s both;
+}
+.cb.draw .cb-sub { animation: cb-soft .5s var(--ease-out) .25s both; }
+.cb-rain i {
+  position: absolute; left: 0; top: 0; width: max(2.5px, calc(var(--S) * .007)); height: calc(var(--S) * .1 * var(--l));
+  border-radius: 3px; background: linear-gradient(rgba(var(--back-rgb), 0), rgba(var(--back-rgb), .95)); opacity: 0;
+  animation: cb-rain 1.05s linear var(--d) 2 both;
+}
+.cb-hint { color: var(--muted); font-size: 13px; animation: cb-hint 1.6s ease-in-out .8s infinite alternate both; }
+@keyframes cb-in { 0% { opacity: 0; transform: scale(.3) rotate(-6deg); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+@keyframes cb-out { to { opacity: 0; transform: translateY(-8px) scale(.97); } }
+@keyframes cb-rise { from { opacity: 0; transform: translateY(40%) scale(.8); } }
+@keyframes cb-soft { from { opacity: 0; transform: translateY(-12px) scale(.97); } }
+@keyframes cb-wobble { 0%, 100% { transform: none; } 30% { transform: rotate(-3deg) scale(1.03); } 65% { transform: rotate(2.5deg); } }
+@keyframes cb-sway { 0%, 100% { transform: none; } 35% { transform: rotate(-1.5deg) translateY(1px); } 70% { transform: rotate(1.2deg); } }
+@keyframes cb-limit { 0% { opacity: 0; transform: scale(.2) rotate(10deg); } 100% { opacity: 1; transform: none; } }
+@keyframes cb-beat { to { transform: scale(1.08); } }
+@keyframes cb-fly {
+  0% { opacity: 0; transform: translate(calc(var(--fx) * var(--S) * .3), calc(var(--fy) * var(--S) * .3)) scale(.45) rotate(-25deg); }
+  25% { opacity: 1; }
+  70% { transform: translateY(-14%) scale(1.15) rotate(6deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes cb-halo { from { opacity: .3; transform: scale(.75); } to { opacity: 1; transform: scale(1.05); } }
+@keyframes cb-glow { from { opacity: 0; transform: scale(.3); } to { opacity: 1; transform: none; } }
+@keyframes cb-spin { to { rotate: 360deg; } }
+@keyframes cb-conf {
+  0% { opacity: 0; transform: scale(.4); } 8% { opacity: 1; }
+  55% { opacity: 1; transform: translate(calc(var(--x) * var(--S)), calc(var(--y) * var(--S))) rotate(var(--r)); }
+  100% { opacity: 0; transform: translate(calc(var(--x) * var(--S) * 1.08), calc((var(--y) + .2) * var(--S))) rotate(calc(var(--r) * 1.7)); }
+}
+@keyframes cb-star { 0% { opacity: 0; transform: scale(0) rotate(-40deg); } 40% { opacity: 1; transform: scale(1.15) rotate(10deg); } 100% { opacity: 0; transform: scale(.5) rotate(50deg); } }
+@keyframes cb-rain {
+  0% { opacity: 0; transform: translate(calc(var(--x) * var(--S) * .45), calc(var(--S) * -.3)); } 20% { opacity: .9; }
+  80% { opacity: .7; } 100% { opacity: 0; transform: translate(calc(var(--x) * var(--S) * .45 - var(--S) * .03), calc(var(--S) * .22)); }
+}
+@keyframes cb-hint { from { opacity: .45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  /* no motion: the banner fades in and out, then the card */
+  .cb { animation: cb-fade 1.3s linear forwards !important; }
+  .cb-conf, .cb-stars, .cb-rays, .cb-rain, .cb-glow, .cb-tile::before { display: none; }
+  .cb-dim { animation: none !important; }
+  .cb-banner, .cb-banner * { animation: none !important; }
+  .cb-hint { animation: none !important; }
+  @keyframes cb-fade { 0% { opacity: 0; } 18%, 80% { opacity: 1; } 100% { opacity: 0; } }
+}

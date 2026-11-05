@@ -218,6 +218,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !current) return;
   const menu = document.getElementById('menu');
   if (menu && !menu.hidden) return; // main.js closes the menu first
+  if (current.celeb) { current.endCeleb(true); return; }
   if (current.resKey && !current.peek) current.setPeek(true);
 });
 
@@ -235,11 +236,15 @@ function replayIn(el) { el.classList.remove('in'); void el.offsetWidth; el.class
 /* Mascot emotes: a tap or swipe on your own mascot (see Table.setupEmotes) plays on
    that player's mascot on every screen (main.js relays them through the session).
    The face variant comes from js/animals.js, the moves and effects from style.css. */
-export const EMOTE_TEXT = { go: 'He he, let\'s go!', hurray: 'Hurray!', sad: 'Aww…', 'think-left': 'Hmm…', 'think-right': 'Hmm…' };
+export const EMOTE_TEXT = { go: 'He he, let\'s go!', hurray: 'Hurray!', sad: 'Aww…', 'think-left': 'Hmm…', 'think-right': 'Hmm…',
+  // local only (the end-of-hand celebration; the room relays only the five above)
+  'pat-left': 'Pat pat', 'pat-right': 'Pat pat' };
 const EMOTE_MS = 1800;
 const SWIPE_MIN = 24; // px along the dominant axis
 const TAP_MAX = 12; // px: a press that moved less is a tap
 const STAR = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0Q5.6 4.4 10 5Q5.6 5.6 5 10Q4.4 5.6 0 5Q4.4 4.4 5 0Z"/></svg>';
+const HEART = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 9C1.6 6.6 0 5 0 3.1 0 1.4 1.3.3 2.7.3 3.7.3 4.5.9 5 1.7 5.5.9 6.3.3 7.3.3 8.7.3 10 1.4 10 3.1 10 5 8.4 6.6 5 9Z"/></svg>';
+const PAW = '<svg viewBox="0 0 20 20" aria-hidden="true"><ellipse cx="10" cy="13" rx="5.2" ry="4.4"/><circle cx="4" cy="7.6" r="2.1"/><circle cx="8" cy="4.6" r="2.2"/><circle cx="12.4" cy="4.6" r="2.2"/><circle cx="16.2" cy="7.6" r="2.1"/></svg>';
 const rep = (n, f) => Array.from({ length: n }, (_, i) => f(i)).join('');
 const EMOTE_FX = {
   go: rep(3, () => `<i class="sp">${STAR}</i>`),
@@ -247,15 +252,18 @@ const EMOTE_FX = {
   sad: rep(3, () => '<i class="gl"></i>'),
   'think-left': '<i class="qm">?</i>',
   'think-right': '<i class="qm">?</i>',
+  'pat-left': rep(2, () => `<i class="ht">${HEART}</i>`),
+  'pat-right': rep(2, () => `<i class="ht">${HEART}</i>`),
 };
 // the emote markup inside a mascot's .ani box: effects plus a bubble with the words
-export function emoteHTML(kind) {
-  const think = kind === 'think-left' || kind === 'think-right';
-  return `<span class="emo-fx" aria-hidden="true">${EMOTE_FX[kind] || ''}</span><span class="bub${think ? ' think' : ''}">${EMOTE_TEXT[kind]}</span>`;
+// (text: other words in the bubble, e.g. "Ron!" at the end of a hand)
+export function emoteHTML(kind, text = EMOTE_TEXT[kind]) {
+  const think = kind === 'think-left' || kind === 'think-right' || kind === 'pat-left' || kind === 'pat-right';
+  return `<span class="emo-fx" aria-hidden="true">${EMOTE_FX[kind] || ''}</span><span class="bub${think ? ' think' : ''}">${esc(text)}</span>`;
 }
 // Show an emote on a mascot box (.ani on the table, .mav in the lobby) for EMOTE_MS:
 // classes .emo .emo-<kind> drive the face and moves, plus effects and a bubble.
-export function playEmoteOn(el, kind) {
+export function playEmoteOn(el, kind, text) {
   if (!el || !el.firstChild || !EMOTE_TEXT[kind]) return;
   clearTimeout(el._emoT);
   for (const x of el.querySelectorAll('.emo-fx, .bub')) x.remove();
@@ -263,7 +271,7 @@ export function playEmoteOn(el, kind) {
   if (el._emo) el.classList.remove('emo-' + el._emo);
   void el.offsetWidth; // restart the animations
   el._emo = kind;
-  el.insertAdjacentHTML('beforeend', emoteHTML(kind));
+  el.insertAdjacentHTML('beforeend', emoteHTML(kind, text));
   el.classList.add('emo', 'emo-' + kind);
   // keep the bubble on screen: nudge it sideways (its tail stays on the mascot)
   const bub = el.lastElementChild;
@@ -306,9 +314,57 @@ export function gestureEmote(dx, dy) {
   return dx < 0 ? 'think-left' : 'think-right';
 }
 
+/* End-of-hand celebration: before the result card, a banner on the table ("Tsumo!",
+   "Ron!" or "Ryuukyoku") with the winning tile, confetti or soft rain, and every seat's
+   mascot reacting with a local emote. Plays once per hand end, only when this table
+   saw the hand being played (not after a reload straight into the result). A tap or
+   Escape skips to the card. Motion is in style.css (#celeb); reduced motion: a fade. */
+const CELEB_MS = { win: 2600, limit: 2900, draw: 2300, reduced: 1300 };
+const CONFETTI = ['#ff8fab', '#7fd6ff', '#a8e68f', '#ffd35c', '#c9a7ff', '#ffb46b'];
+const SEAT_DIR = [[0, 1], [1, 0], [0, -1], [-1, 0]]; // toward seat r from the center
+const fx = (n) => n.toFixed(2);
+
+function celebHTML(v) {
+  const r = v.result;
+  if (r.type === 'draw') {
+    const n = r.tenpai.length;
+    const sub = n === 0 ? 'Nobody tenpai' : n === 4 ? 'Everyone tenpai' : `${n} tenpai`;
+    const rain = rep(16, (i) => `<i style="--x:${fx((i / 15 - 0.5) * 1.5 + (Math.random() - 0.5) * 0.06)};--d:${Math.round(Math.random() * 900)}ms;--l:${fx(0.6 + Math.random() * 0.6)}"></i>`);
+    return `<div class="cb draw"><div class="cb-dim" aria-hidden="true"></div><div class="cb-rain" aria-hidden="true">${rain}</div>
+      <div class="cb-banner"><div class="cb-big">Ryuukyoku</div><div class="cb-sub">Exhaustive draw · ${sub}</div></div></div>`;
+  }
+  const w = v.players[r.winner];
+  const rel = (r.winner - v.seat + 4) % 4;
+  const [dx, dy] = SEAT_DIR[rel];
+  const big = r.yakuman ? ' yakuman' : r.limit ? ' limit' : '';
+  const n = big ? 34 : 24;
+  const conf = rep(n, (i) => {
+    const a = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const d = 0.28 + Math.random() * 0.22;
+    return `<i class="${i % 3 ? '' : 'rd'}" style="--x:${fx(Math.cos(a) * d * 1.25)};--y:${fx(Math.sin(a) * d - 0.08)};--r:${Math.round((Math.random() - 0.5) * 720)}deg;--d:${Math.round(Math.random() * 160)}ms;--c:${CONFETTI[i % CONFETTI.length]}"></i>`;
+  });
+  const ns = big ? 10 : 6;
+  const stars = rep(ns, (i) => {
+    const a = (i / ns) * Math.PI * 2 + 0.4;
+    return `<i style="--x:${fx(Math.cos(a) * 0.34)};--y:${fx(Math.sin(a) * 0.2)};--d:${180 + i * 110}ms">${STAR}</i>`;
+  });
+  const from = r.type === 'ron' ? `<span class="cb-from">from ${esc(v.players[r.from].name)}</span>` : '';
+  const ani = w.animal != null ? `<span class="cb-ani">${animalSVG(w.animal)}</span>` : '';
+  return `<div class="cb win ${r.type}${big}"><div class="cb-dim" aria-hidden="true"></div>
+    ${big ? '<div class="cb-rays" aria-hidden="true"></div>' : ''}<div class="cb-glow" aria-hidden="true"></div>
+    <div class="cb-conf" aria-hidden="true">${conf}</div><div class="cb-stars" aria-hidden="true">${stars}</div>
+    <div class="cb-banner">
+      <div class="cb-tile" style="--fx:${dx};--fy:${dy}" aria-hidden="true">${tileHTML(r.winTile)}</div>
+      <div class="cb-big">${r.type === 'tsumo' ? 'Tsumo!' : 'Ron!'}</div>
+      <div class="cb-sub">${ani}<span class="cb-name">${esc(w.name)}</span>${from}</div>
+      ${r.limit ? `<div class="cb-limit">${esc(r.limit)}!</div>` : ''}
+    </div></div>`;
+}
+
 const TABLE_HTML = `
   <div id="table"><div id="wrap"><div id="board">
     <div class="center"><div class="round"></div><div class="sub"></div><div class="dora"></div></div>
+    <div id="celeb" role="status"></div>
     ${[0, 1, 2, 3].map((r) => `<span class="ani a${r}${r ? '' : ' me'}"></span>`).join('')}
     ${[0, 1, 2, 3].map((r) => `<div class="layer r${r}">
       <div class="info"><div class="txt"><span class="wind"></span><span class="score"></span><span class="stick" hidden></span><span class="pname"></span></div></div>
@@ -320,6 +376,7 @@ const TABLE_HTML = `
     <div id="status"><span id="hint"></span><span id="actions"></span></div>
     <div id="hand"><div class="handrow"><span class="tiles"></span><span class="drawn"></span><span class="mymelds"></span></div></div>
   </div>
+  <div id="celebskip" hidden></div>
   <div id="modal" role="dialog" aria-modal="true" aria-label="Hand result" hidden><div class="card" id="modalcard"></div></div>`;
 
 export class Table {
@@ -342,8 +399,12 @@ export class Table {
       round: q('.center .round'), sub: q('.center .sub'), dora: q('.center .dora'),
       announce: q('#announce'), hint: q('#hint'), actions: q('#actions'), bar: q('#bar'),
       hand: q('#hand .tiles'), drawn: q('#hand .drawn'), mymelds: q('#hand .mymelds'),
-      modal: q('#modal'), modalcard: q('#modalcard'),
+      modal: q('#modal'), modalcard: q('#modalcard'), celeb: q('#celeb'), celebskip: q('#celebskip'),
     };
+    this.celeb = null; // the end-of-hand celebration playing: { key, timers }
+    this.celebKey = null; // the last hand end seen (celebrated or not)
+    this.playKey = null; // the hand this table saw being played
+    this.el.celebskip.addEventListener('click', (e) => { e.stopPropagation(); this.endCeleb(true); }, { signal: this.off.signal });
     root.addEventListener('click', (e) => {
       const b = e.target.closest('[data-ui]');
       if (b && b.dataset.ui === 'close') this.setPeek(true);
@@ -383,6 +444,8 @@ export class Table {
     clearTimeout(this.idleTimer);
     clearTimeout(this.idleEnd);
     for (const el of this.anis) clearTimeout(el._emoT);
+    if (this.celeb) for (const t of this.celeb.timers) clearTimeout(t);
+    this.celeb = null;
     this.idleTimer = this.idleEnd = null;
     this.drag = null;
     for (const a of this.anims) a.cancel();
@@ -431,6 +494,7 @@ export class Table {
     const r = (seat - this.v.seat + 4) % 4;
     const now = Date.now();
     this.mine = this.mine.filter((m) => now - m.at < 4000);
+    if (!own && this.anis[r]._celeb > now) return false; // its end-of-hand reaction is showing
     if (own) this.mine.push({ kind, at: now });
     else if (r === 0) {
       const i = this.mine.findIndex((m) => m.kind === kind);
@@ -442,9 +506,113 @@ export class Table {
 
   get emoting() { return !!this.anis[0]._emo; }
 
-  playEmote(r, kind) {
+  playEmote(r, kind, text) {
     if (r === 0) { clearTimeout(this.idleEnd); this.anis[0].classList.remove('idle'); }
-    playEmoteOn(this.anis[r], kind);
+    playEmoteOn(this.anis[r], kind, text);
+  }
+
+  /* ---- end-of-hand celebration (see celebHTML) ---- */
+  // Called on every update: starts it on a fresh hand end, stops it when the view moved on.
+  checkCeleb(v) {
+    const r = v.result;
+    const hand = `${v.round}:${v.kyoku}:${v.honba}`;
+    if (v.phase !== 'end' && v.phase !== 'over') { this.playKey = hand; this.celebKey = null; }
+    const key = v.phase === 'end' && r ? `${hand}:${r.type}:${r.winner ?? ''}` : '';
+    if (this.celeb && this.celeb.key !== key) this.endCeleb(false);
+    if (!key || key === this.celebKey) return;
+    this.celebKey = key;
+    // a reload or reconnect straight into the result: just the card
+    if (this.playKey !== hand || document.hidden) return;
+    this.startCeleb(v, key);
+  }
+
+  startCeleb(v, key) {
+    const r = v.result;
+    const reduced = reduceMotion.matches;
+    const ms = reduced ? CELEB_MS.reduced : r.type === 'draw' ? CELEB_MS.draw : r.limit ? CELEB_MS.limit : CELEB_MS.win;
+    const timers = [];
+    this.celeb = { key, timers };
+    this.el.celeb.innerHTML = celebHTML(v);
+    this.el.celebskip.hidden = false;
+    this.el.announce.replaceChildren(); // e.g. a "Riichi!" still showing
+    const rel = (s) => (s - v.seat + 4) % 4;
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const pick = (a) => a[Math.floor(Math.random() * a.length)];
+    const emo = (s, kind, text, at) => timers.push(setTimeout(() => {
+      if (!this.celeb || this.celeb.key !== key) return;
+      this.playEmote(rel(s), kind, text);
+      this.anis[rel(s)]._celeb = Date.now() + EMOTE_MS; // others' emotes wait (see emote)
+    }, at));
+    if (r.type === 'draw') {
+      for (let s = 0; s < 4; s++) {
+        const t0 = 240 + rel(s) * 90 + rnd(0, 120);
+        if (r.tenpai.includes(s)) {
+          emo(s, 'go', 'Tenpai!', t0);
+          if (Math.random() < 0.5) emo(s, pick(['go', 'hurray']), pick(['Phew!', 'Yay!']), t0 + rnd(1000, 1300));
+        } else {
+          emo(s, 'sad', 'Noten…', t0);
+          if (Math.random() < 0.4) emo(s, pick(['think-left', 'think-right']), pick(['Hmm…', 'So close…']), t0 + rnd(1100, 1400));
+        }
+      }
+    } else {
+      // (head-bump: one winner; a list is handled the same way should it ever come)
+      const winners = Array.isArray(r.winners) && r.winners.length ? r.winners : [r.winner];
+      const word = r.type === 'tsumo' ? 'Tsumo!' : 'Ron!';
+      const loser = r.type === 'ron' ? r.from : -1;
+      // look toward the loser: by screen side (a0/a3 left, a1/a2 right); same side: inward
+      const side = (q) => (q === 0 || q === 3 ? -1 : 1);
+      const toward = (s) => {
+        const d = side(rel(loser)) - side(rel(s));
+        return (d ? d < 0 : side(rel(s)) > 0) ? 'left' : 'right';
+      };
+      for (let s = 0; s < 4; s++) {
+        if (winners.includes(s)) {
+          // happy first and last: a second hurray holds it until the card
+          emo(s, 'hurray', word, 180);
+          emo(s, 'hurray', pick(['Yay!', word, 'Woohoo!']), 1250);
+        } else if (s === loser) {
+          emo(s, 'sad', 'Aww…', 480);
+        } else if (r.type === 'tsumo') {
+          const t0 = rnd(380, 700);
+          emo(s, 'go', pick(['Nice!', 'Yay!', 'Wow!', 'Good one!']), t0);
+          if (Math.random() < 0.55) emo(s, pick(['go', 'hurray']), pick(['Clap clap!', 'Hehe!', 'Yay!']), t0 + rnd(950, 1250));
+        } else {
+          // bystanders of a ron: look at the loser, then comfort them
+          const dir = toward(s);
+          const t0 = rnd(420, 650);
+          if (Math.random() < 0.7) emo(s, 'think-' + dir, pick(['Oh no…', 'Oof…', 'Hmm…']), t0);
+          const tp = t0 + rnd(650, 900);
+          emo(s, 'pat-' + dir, pick(['Pat pat', 'There there', '♥']), tp);
+          timers.push(setTimeout(() => { if (this.celeb && this.celeb.key === key) this.patOn(rel(loser)); }, tp + 260));
+        }
+      }
+    }
+    timers.push(setTimeout(() => this.endCeleb(true), ms));
+  }
+
+  // a comforting paw patting the loser's head, with little hearts
+  patOn(r) {
+    const el = this.anis[r];
+    if (!el.firstChild) return;
+    const old = el.querySelector('.cb-pat');
+    if (old) old.remove();
+    el.insertAdjacentHTML('beforeend', `<span class="cb-pat" aria-hidden="true"><i class="pw">${PAW}</i>${rep(3, () => `<i class="ht">${HEART}</i>`)}</span>`);
+    const p = el.lastElementChild;
+    if (this.celeb) this.celeb.timers.push(setTimeout(() => p.remove(), 1500));
+  }
+
+  // show: then open the result card (skipped / finished), else the view moved on
+  endCeleb(show) {
+    if (!this.celeb) return;
+    for (const t of this.celeb.timers) clearTimeout(t);
+    for (const p of this.root.querySelectorAll('.cb-pat')) p.remove();
+    this.celeb = null;
+    this.el.celeb.replaceChildren();
+    this.el.celebskip.hidden = true;
+    if (show && this.v && !this.off.signal.aborted) {
+      this.update(this.v, this.ui);
+      if (this.resKey && !this.peek) this.showModal();
+    }
   }
 
   patchAnimal(r, p) {
@@ -522,6 +690,7 @@ export class Table {
     for (const a of this.anims) a.cancel();
     this.anims.clear();
 
+    this.checkCeleb(v);
     this.patchCenter(v);
     const newPond = new Set(); // elements newly added to a pond
     for (let r = 0; r < 4; r++) this.patchSeat(v, r, newPond);
@@ -761,7 +930,7 @@ export class Table {
     // a new hand, a new result or the final standings always (re)opens the card
     const fresh = rk !== this.resKey && (!this.resKey || rk.startsWith('over') !== this.el.modal._over);
     if (!rk || fresh) this.peek = false;
-    const a = this.peek && rk ? peekActions(v) : actionsHTML(v, ui);
+    const a = this.celeb ? { html: '', hint: '<span class="cb-hint">Tap to continue</span>' } : this.peek && rk ? peekActions(v) : actionsHTML(v, ui);
     const ak = a.hint + '|' + a.html;
     if (ak !== this.actKey) {
       this.actKey = ak;
@@ -777,6 +946,7 @@ export class Table {
     this.evId = event.id;
     const r = (event.seat - v.seat + 4) % 4;
     const kind = /Riichi/.test(event.text) ? 'y' : /Ron|Tsumo/.test(event.text) ? 'g' : /Ryuukyoku/.test(event.text) ? 'b' : 'p';
+    if (this.celeb && (kind === 'g' || kind === 'b')) return event; // the celebration says it (still a sound)
     const span = document.createElement('span');
     span.className = `ev p${r} ${kind}`;
     span.textContent = event.text + (kind === 'b' ? '' : '!');
@@ -798,8 +968,8 @@ export class Table {
         m._over = rk.startsWith('over');
       }
     }
-    m.hidden = !rk || this.peek;
-    if (opened) this.showModal();
+    m.hidden = !rk || this.peek || !!this.celeb;
+    if (opened && !this.celeb) this.showModal();
   }
 
   flip({ rects, lastBack }, newPond) {

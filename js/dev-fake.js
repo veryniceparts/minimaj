@@ -5,6 +5,7 @@ import { pickAnimals, pickAnimalExcept, ANIMAL_COUNT, MAX_REROLLS, EMOTES, emote
 
 const q = new URLSearchParams(location.search);
 const DELAY = +(q.get('delay') ?? 500);
+const WALL = +(q.get('wall') || 0);
 const MOOD_MS = +(q.get('moods') || 0); // ?moods=3000: computers emote that often (screenshots)
 
 export const normCode = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
@@ -57,23 +58,13 @@ export function createSession(opts, h) {
   };
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const later = (seat, e, ms) => { const g = game; setTimeout(() => { if (game === g && g) emit(seat, e); }, ms); };
-  let moodKey = '';
   let riichi = [false, false, false, false];
   function botMood(v) {
     v.players.forEach((p, s) => {
       if (s && p.riichi && !riichi[s]) later(s, pick(['go', 'hurray']), 500);
       riichi[s] = !!p.riichi;
     });
-    const r = v.result;
-    const key = r ? `${v.round}:${v.kyoku}:${v.honba}:${r.type}` : '';
-    if (key && key !== moodKey) {
-      if (r.type !== 'draw') {
-        if (r.winner) later(r.winner, 'hurray', 700);
-        const loser = r.type === 'ron' ? r.from : -1;
-        if (loser > 0) later(loser, 'sad', 1300);
-      } else later(1 + Math.floor(Math.random() * 3), 'think-left', 900);
-    }
-    moodKey = key;
+    // (at a hand's end every mascot reacts on its own: the table's celebration, js/ui.js)
   }
   let moodTimer = null;
   const randomMood = () => {
@@ -97,6 +88,10 @@ export function createSession(opts, h) {
         { length: settings.length, botDelay: DELAY, onChange: () => flush(g) });
       game = g;
       riichi = [false, false, false, false];
+      if (WALL) { // ?wall=N: only N live tiles after the deal (exhaustive draws, screenshots)
+        const deal = g.startRound.bind(g);
+        g.startRound = () => { deal(); g.live.splice(0, Math.max(0, g.live.length - WALL)); };
+      }
       g.start();
     },
     setSettings(s) { if (closed) return; settings = { ...settings, ...s }; h.onLobby(lobby()); },
