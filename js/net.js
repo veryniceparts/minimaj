@@ -286,7 +286,8 @@ export function createSession(opts, handlers) {
     if (!t || connState !== 'open' || stopped) return;
     const now = Date.now();
     if (now - lastPing >= PING_MS) { lastPing = now; t.send({ t: 'ping', n: ++pingN }); }
-    if (!t.local && now - lastRx > DEAD_MS) onDrop(t, 'No answer from the host');
+    // online rooms run in the host's tab: a locked screen / backgrounded tab is the usual cause
+    if (!t.local && now - lastRx > DEAD_MS) onDrop(t, mode === 'online' ? "No answer from the host (is their screen locked or minimaj in the background?)" : 'No answer from the host');
   }
 
   function onVisible() {

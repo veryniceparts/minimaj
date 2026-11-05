@@ -56,13 +56,13 @@ let pointerType = 'mouse';
 /* ---------------- toast / banner ---------------- */
 
 let toastTimer;
-function toast(msg) {
+function toast(msg, ms = 2600) {
   const el = $('toast');
   el.textContent = msg;
   el.hidden = false;
   el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+  toastTimer = setTimeout(() => { el.hidden = true; }, ms);
 }
 
 function banner(text) {
@@ -128,7 +128,23 @@ function setupFullscreen() {
   // launched from the Home Screen (installed web app): already full screen
   const installed = navigator.standalone === true
     || (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches);
-  if (!btn || !supported || inAndroidApp || installed) return;
+  if (!btn || inAndroidApp || installed) return;
+  if (!supported) {
+    // iPhone Safari has no page full screen: the button explains how to get it
+    // (Share → Add to Home Screen opens minimaj full screen, like an app).
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!ios) return;
+    btn.innerHTML = FS_ENTER;
+    btn.setAttribute('aria-label', 'How to play full screen');
+    btn.title = 'Full screen';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      toast('For full screen: tap Share (□↑) → "Add to Home Screen", then open minimaj from its icon', 6000);
+    };
+    btn.hidden = false;
+    return;
+  }
   const isFs = () => !!(d.fullscreenElement || d.webkitFullscreenElement);
   const sync = () => {
     const on = isFs();
@@ -235,7 +251,30 @@ function setScreen(name, cls = 'home') {
   app.onclick = null;
   closeMenu();
   document.title = 'minimaj';
+  updateWakeLock();
 }
+
+// Keep the screen on while at a table (lobby or game). Phones freeze a page
+// when the screen locks; for the host of an online room that stalls the whole
+// table ("No answer from the host"). Uses the Screen Wake Lock API where
+// available (Chrome/Android, Safari 16.4+); it is released when hidden, so
+// it is re-requested when the page becomes visible again.
+let wakeLock = null;
+const wantWake = () => screen === 'lobby' || screen === 'game' || screen === 'connecting';
+async function updateWakeLock() {
+  try {
+    if (!('wakeLock' in navigator)) return;
+    if (wantWake() && document.visibilityState === 'visible') {
+      if (!wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+    } else if (wakeLock) {
+      const w = wakeLock; wakeLock = null; await w.release();
+    }
+  } catch { wakeLock = null; /* not allowed here (e.g. low battery): ignore */ }
+}
+document.addEventListener('visibilitychange', updateWakeLock);
 
 const logo = () => `<h1 class="logo"><span class="tiles">${tileHTML(4 * 33)}${tileHTML(52)}${tileHTML(4 * 27)}</span>minimaj</h1>`;
 
