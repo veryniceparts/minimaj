@@ -232,8 +232,79 @@ function setCls(el, c) { if (el.className !== c) el.className = c; }
 // restart a CSS entry animation (.in) on an element
 function replayIn(el) { el.classList.remove('in'); void el.offsetWidth; el.classList.add('in'); }
 
-const HEART = '<svg viewBox="0 0 10 9" aria-hidden="true"><path d="M5 8.6C-1.4 4.6.4-.9 5 2.3 9.6-.9 11.4 4.6 5 8.6Z"/></svg>';
-const HEARTS = `<span class="hearts">${HEART}${HEART}${HEART}</span>`;
+/* Mascot emotes: a tap or swipe on your own mascot (see Table.setupEmotes) plays on
+   that player's mascot on every screen (main.js relays them through the session).
+   The face variant comes from js/animals.js, the moves and effects from style.css. */
+export const EMOTE_TEXT = { go: 'He he, let\'s go!', hurray: 'Hurray!', sad: 'Aww…', 'think-left': 'Hmm…', 'think-right': 'Hmm…' };
+const EMOTE_MS = 1800;
+const SWIPE_MIN = 24; // px along the dominant axis
+const TAP_MAX = 12; // px: a press that moved less is a tap
+const STAR = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0Q5.6 4.4 10 5Q5.6 5.6 5 10Q4.4 5.6 0 5Q4.4 4.4 5 0Z"/></svg>';
+const rep = (n, f) => Array.from({ length: n }, (_, i) => f(i)).join('');
+const EMOTE_FX = {
+  go: rep(3, () => `<i class="sp">${STAR}</i>`),
+  hurray: rep(8, () => '<i class="cf"></i>') + rep(2, () => `<i class="st">${STAR}</i>`),
+  sad: rep(3, () => '<i class="gl"></i>'),
+  'think-left': '<i class="qm">?</i>',
+  'think-right': '<i class="qm">?</i>',
+};
+// the emote markup inside a mascot's .ani box: effects plus a bubble with the words
+export function emoteHTML(kind) {
+  const think = kind === 'think-left' || kind === 'think-right';
+  return `<span class="emo-fx" aria-hidden="true">${EMOTE_FX[kind] || ''}</span><span class="bub${think ? ' think' : ''}">${EMOTE_TEXT[kind]}</span>`;
+}
+// Show an emote on a mascot box (.ani on the table, .mav in the lobby) for EMOTE_MS:
+// classes .emo .emo-<kind> drive the face and moves, plus effects and a bubble.
+export function playEmoteOn(el, kind) {
+  if (!el || !el.firstChild || !EMOTE_TEXT[kind]) return;
+  clearTimeout(el._emoT);
+  for (const x of el.querySelectorAll('.emo-fx, .bub')) x.remove();
+  el.classList.remove('emo');
+  if (el._emo) el.classList.remove('emo-' + el._emo);
+  void el.offsetWidth; // restart the animations
+  el._emo = kind;
+  el.insertAdjacentHTML('beforeend', emoteHTML(kind));
+  el.classList.add('emo', 'emo-' + kind);
+  // keep the bubble on screen: nudge it sideways (its tail stays on the mascot)
+  const bub = el.lastElementChild;
+  const pr = el.getBoundingClientRect();
+  const left = pr.left + bub.offsetLeft, right = left + bub.offsetWidth, pad = 6;
+  const dx = left < pad ? pad - left : right > innerWidth - pad ? innerWidth - pad - right : 0;
+  if (dx) { bub.style.translate = `${Math.round(dx)}px 0`; bub.style.setProperty('--tx', `${Math.round(Math.max(-(bub.offsetWidth - 26), Math.min(bub.offsetWidth - 26, -dx)))}px`); }
+  el._emoT = setTimeout(() => {
+    el.classList.remove('emo', 'emo-' + kind);
+    for (const x of el.querySelectorAll('.emo-fx, .bub')) x.remove();
+    el._emo = null;
+  }, EMOTE_MS);
+}
+
+// Pointer gestures on a mascot element: onKind(kind) after a tap or swipe. Returns
+// nothing; listeners go away with signal.
+export function emoteGestures(el, onKind, signal) {
+  let g = null;
+  el.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault(); // no text selection or native drag
+    g = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    try { el.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+  }, { signal });
+  el.addEventListener('pointerup', (e) => {
+    if (!g || e.pointerId !== g.id) return;
+    const kind = gestureEmote(e.clientX - g.x, e.clientY - g.y);
+    g = null;
+    if (kind) onKind(kind, e);
+  }, { signal });
+  el.addEventListener('pointercancel', (e) => { if (g && e.pointerId === g.id) g = null; }, { signal });
+  el.addEventListener('contextmenu', (e) => e.preventDefault(), { signal }); // long press
+}
+
+// what a pointer gesture means: a tap, a swipe (dominant axis, at least SWIPE_MIN px) or nothing
+export function gestureEmote(dx, dy) {
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  if (Math.max(ax, ay) < SWIPE_MIN) return ax < TAP_MAX && ay < TAP_MAX ? 'go' : null;
+  if (ay >= ax) return dy < 0 ? 'hurray' : 'sad';
+  return dx < 0 ? 'think-left' : 'think-right';
+}
 
 const TABLE_HTML = `
   <div id="table"><div id="wrap"><div id="board">
@@ -278,12 +349,14 @@ export class Table {
       if (b && b.dataset.ui === 'close') this.setPeek(true);
       else if (b && b.dataset.ui === 'open') this.setPeek(false);
       else if (e.target === this.el.modal && this.resKey) this.setPeek(true); // tap on the backdrop
-      else if (e.target.closest('.ani.me')) this.animalMove('tap');
     }, { signal: this.off.signal });
     this.anis = [0, 1, 2, 3].map((r) => q(`.ani.a${r}`));
     this.idleTimer = null;
     this.idleEnd = null;
     this.scheduleIdle();
+    this.onEmote = null; // (kind) => void: set by main.js; your gesture on your mascot
+    this.mine = []; // your own emotes played before the room's echo: [{ kind, at }]
+    this.setupEmotes();
     this.layers = [0, 1, 2, 3].map((r) => {
       const L = q(`.layer.r${r}`);
       const o = {
@@ -309,6 +382,7 @@ export class Table {
     this.off.abort();
     clearTimeout(this.idleTimer);
     clearTimeout(this.idleEnd);
+    for (const el of this.anis) clearTimeout(el._emoT);
     this.idleTimer = this.idleEnd = null;
     this.drag = null;
     for (const a of this.anims) a.cancel();
@@ -318,12 +392,12 @@ export class Table {
     if (current === this) current = null;
   }
 
-  /* ---- your animal: an idle move every 6-15 s, a happy hop when tapped ---- */
+  /* ---- your animal: an idle move every 6-15 s; emotes from a tap or swipe ---- */
   scheduleIdle() {
     clearTimeout(this.idleTimer);
     if (this.off.signal.aborted) return;
     this.idleTimer = setTimeout(() => {
-      if (!reduceMotion.matches && !document.hidden) {
+      if (!reduceMotion.matches && !document.hidden && !this.anis[0]._emo) {
         const moves = animalMoves(this.anis[0]._k);
         this.animalMove(moves[Math.floor(Math.random() * moves.length)]);
       }
@@ -331,29 +405,56 @@ export class Table {
     }, 6000 + Math.random() * 9000);
   }
 
-  // move: an idle move name (data-move) or 'tap'; restarts the CSS animation
+  // move: an idle move name (data-move); restarts the CSS animation
   animalMove(move) {
     const el = this.anis[0];
-    if (!el.firstChild || this.off.signal.aborted) return;
-    if (move !== 'tap' && el.classList.contains('tap')) return; // let the reaction finish
+    if (!el.firstChild || this.off.signal.aborted || el._emo) return; // let an emote finish
     clearTimeout(this.idleEnd);
-    el.classList.remove('idle', 'tap');
+    el.classList.remove('idle');
     void el.offsetWidth;
-    if (move === 'tap') {
-      el.classList.add('tap');
-      this.scheduleIdle(); // no idle move right after a tap
-    } else {
-      el.dataset.move = move;
-      el.classList.add('idle');
+    el.dataset.move = move;
+    el.classList.add('idle');
+    this.idleEnd = setTimeout(() => el.classList.remove('idle'), 1400);
+  }
+
+  // Gestures on your own mascot: tap = go, swipe up = hurray, down = sad,
+  // left / right = think-left / think-right. Pointer events, so mouse and touch
+  // both work; touch-action: none (style.css) keeps the page from scrolling.
+  setupEmotes() {
+    emoteGestures(this.anis[0], (kind) => { if (this.onEmote) this.onEmote(kind); }, this.off.signal);
+  }
+
+  // Play an emote on a seat's mascot. own: your gesture, played before the room's echo.
+  // Returns false when it was the echo of one already shown.
+  emote(seat, kind, own = false) {
+    if (!this.v || !EMOTE_TEXT[kind] || this.off.signal.aborted) return false;
+    const r = (seat - this.v.seat + 4) % 4;
+    const now = Date.now();
+    this.mine = this.mine.filter((m) => now - m.at < 4000);
+    if (own) this.mine.push({ kind, at: now });
+    else if (r === 0) {
+      const i = this.mine.findIndex((m) => m.kind === kind);
+      if (i >= 0) { this.mine.splice(i, 1); return false; } // our own, already shown
     }
-    this.idleEnd = setTimeout(() => el.classList.remove('idle', 'tap'), move === 'tap' ? 1000 : 1400);
+    this.playEmote(r, kind);
+    return true;
+  }
+
+  get emoting() { return !!this.anis[0]._emo; }
+
+  playEmote(r, kind) {
+    if (r === 0) { clearTimeout(this.idleEnd); this.anis[0].classList.remove('idle'); }
+    playEmoteOn(this.anis[r], kind);
   }
 
   patchAnimal(r, p) {
     const el = this.anis[r];
     if (el._k === p.animal) return;
     el._k = p.animal;
-    el.innerHTML = p.animal == null ? '' : animalSVG(p.animal) + (r ? '' : HEARTS);
+    clearTimeout(el._emoT);
+    if (el._emo) el.classList.remove('emo', 'emo-' + el._emo);
+    el._emo = null;
+    el.innerHTML = p.animal == null ? '' : animalSVG(p.animal);
     el.title = p.animal == null ? '' : ANIMAL_NAMES[p.animal % ANIMAL_NAMES.length];
   }
 

@@ -1,4 +1,4 @@
-import { Table, tileHTML, roundName } from './ui.js';
+import { Table, tileHTML, roundName, playEmoteOn, emoteGestures } from './ui.js';
 import { codeForUrl, parseTableInput, scanTables } from './lan.js';
 import { animalSVG, ANIMAL_NAMES } from './animals.js';
 
@@ -444,6 +444,7 @@ function sessionHandlers(token, opts) {
       else showHome(msg);
     },
     onStatus: (text) => { if (live() && text) toast(text); },
+    onEmote: (ev) => { if (live()) showEmote(ev); },
     onConn: (state) => {
       if (!live()) return;
       if (state === 'reconnecting') banner('Reconnecting…');
@@ -452,6 +453,40 @@ function sessionHandlers(token, opts) {
       else banner('');
     },
   };
+}
+
+/* ---------------- mascot emotes ---------------- */
+
+// A tap or swipe on your own mascot. It plays here at once; the room's echo of it
+// is then skipped (Table.emote / lobbyMine). When the session can't send it (offline,
+// too soon after the last one) it still plays here, unless one is showing already.
+function myEmote(kind) {
+  const sentOk = !!(session && session.emote && session.emote(kind));
+  if (screen === 'game' && table && view) {
+    if (sentOk) table.emote(view.seat, kind, true);
+    else if (!table.emoting) table.playEmote(0, kind);
+  } else if (screen === 'lobby') {
+    const el = lobbyMav(lobbyYou);
+    if (sentOk) { lobbyMine.push({ kind, at: Date.now() }); playEmoteOn(el, kind); }
+    else if (el && !el._emo) playEmoteOn(el, kind);
+  }
+}
+
+let lobbyMine = []; // your lobby emotes already shown: [{ kind, at }]
+let lobbyYou = -1; // your index in lobby.members
+const lobbyMav = (i) => { const li = i >= 0 ? app.querySelectorAll('.seats li')[i] : null; return li ? li.querySelector('.mav') : null; };
+
+// { seat, e } in a game; { seat: -1, member, e } in the lobby
+function showEmote(ev) {
+  if (screen === 'game' && table && ev.seat >= 0) { table.emote(ev.seat, ev.e); return; }
+  if (screen !== 'lobby' || !(ev.member >= 0)) return;
+  if (ev.member === lobbyYou) {
+    const now = Date.now();
+    lobbyMine = lobbyMine.filter((m) => now - m.at < 4000);
+    const i = lobbyMine.findIndex((m) => m.kind === ev.e);
+    if (i >= 0) { lobbyMine.splice(i, 1); return; }
+  }
+  playEmoteOn(lobbyMav(ev.member), ev.e);
 }
 
 /* ---------------- lobby ---------------- */
@@ -488,6 +523,7 @@ function showLobby(l) {
     return `<li class="${m.connected ? '' : 'off'}">${av}<span class="nm">${esc(m.name)}${tags ? `<small>${tags}</small>` : ''}</span></li>`;
   }).join('');
   lobbyAnimals = [0, 1, 2, 3].map((i) => (l.members[i] ? l.members[i].animal : null));
+  lobbyYou = l.members.findIndex((m) => m.you);
   const others = l.mode === 'lan' ? (l.lanUrls || []).filter((u) => u !== url) : [];
   const n = l.members.length;
   // a localhost link is useless to friends: say so instead of showing a QR for it
@@ -522,7 +558,17 @@ function showLobby(l) {
   }
   $('leave').onclick = leave;
   const rr = $('reroll');
+  // swipe your mascot to emote (a tap still rerolls)
+  const myMav = rr && rr.querySelector('.mav');
+  if (myMav) {
+    emoteGestures(myMav, (kind) => {
+      if (kind === 'go') return;
+      rr._swiped = Date.now();
+      myEmote(kind);
+    });
+  }
   if (rr) rr.onclick = () => {
+    if (rr._swiped && Date.now() - rr._swiped < 800) { rr._swiped = 0; return; } // that was a swipe
     if (!session || !session.reroll) return;
     rr.disabled = true; // until the new mascot arrives (re-enabled if the host never answers)
     session.reroll();
@@ -615,6 +661,7 @@ function renderGame(v) {
   if (screen !== 'game') {
     setScreen('game', 'game');
     table = new Table(app);
+    table.onEmote = myEmote;
     app.onclick = onGameClick;
   }
   view = v;

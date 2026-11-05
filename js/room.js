@@ -39,6 +39,24 @@ const CHECK_MS = 1000;
 const RATE_WINDOW_MS = 1000;
 const RATE_MAX = 60; // messages per window per connection; extra ones are dropped
 
+// Mascot emotes (a tap or swipe on your own mascot), shown to everyone at the table.
+export const EMOTES = ['go', 'hurray', 'sad', 'think-left', 'think-right'];
+export const EMOTE_GAP_MS = 1200; // at most one emote per member per 1.2 s ...
+export const EMOTE_BURST = 10; // ... and 10 per 20 s; extra ones are dropped silently
+export const EMOTE_BURST_MS = 20000;
+
+// times: the member's recent emote timestamps (oldest first; trimmed in place).
+// true (and records now) when one more emote is allowed. Clients use the same rule
+// (with some slack for network jitter) so their own optimistic emote matches what
+// the others see.
+export function emoteAllowed(times, now, slack = 0) {
+  while (times.length && now - times[0] >= EMOTE_BURST_MS + slack) times.shift();
+  if (times.length && now - times[times.length - 1] < EMOTE_GAP_MS + slack) return false;
+  if (times.length >= EMOTE_BURST) return false;
+  times.push(now);
+  return true;
+}
+
 function cleanName(s) {
   const n = String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 16).trim();
   return n || 'Player';
@@ -57,6 +75,7 @@ export function createRoom(env) {
   let flushQueued = false;
   let lobbyDirty = false;
   let viewDirty = false;
+  let emoteN = 0; // id of the last emote broadcast (clients dedupe with it)
   let lastCheck = env.now();
   let checkTimer = setTimeout(check, CHECK_MS);
 
@@ -305,6 +324,23 @@ export function createRoom(env) {
     if (c.member && c.member.connId === connId) detach(c.member);
   }
 
+  /* ---------------- emotes ---------------- */
+
+  // {t:'emote', e}: in a game it goes to everyone as {t:'emote', seat, e, n}; in the
+  // lobby as {t:'emote', seat: -1, member: index in lobby.members, e, n}.
+  function onEmote(c, msg) {
+    const m = c.member;
+    if (!m || m.connId == null || EMOTES.indexOf(msg.e) < 0) return;
+    const seat = game ? seatOf(m) : -1;
+    const member = game ? -1 : members.indexOf(m);
+    if (game ? seat < 0 : member < 0) return;
+    if (!m.emotes) m.emotes = [];
+    if (!emoteAllowed(m.emotes, env.now())) return;
+    const out = { t: 'emote', seat, e: msg.e, n: ++emoteN };
+    if (!game) out.member = member;
+    for (const x of members) if (x.connId != null) send(x.connId, out);
+  }
+
   /* ---------------- heartbeat ---------------- */
 
   const EMPTY_MS = 60000;
@@ -363,6 +399,7 @@ export function createRoom(env) {
             }
             break;
           case 'lobby-cmd': onLobbyCmd(connId, c, msg); break;
+          case 'emote': onEmote(c, msg); break;
           default: break;
         }
       } catch (e) { log('message failed', e); }

@@ -1,7 +1,7 @@
 // Tests for js/room.js with a fake env and a manual clock.
 import assert from 'node:assert/strict';
 import { installFakeClock } from './fakeclock.js';
-import { createRoom, PROTO, MIN_PROTO, ANIMAL_COUNT } from '../js/room.js';
+import { createRoom, PROTO, MIN_PROTO, ANIMAL_COUNT, EMOTES, emoteAllowed } from '../js/room.js';
 import { ANIMAL_COUNT as ART_COUNT } from '../js/animals.js';
 
 export function runRoomTests() {
@@ -370,6 +370,76 @@ export function runRoomTests() {
     assert.equal(l.members.find((m) => m.you).animal, before[v.seat]);
     assert.equal(new Set(l.members.map((m) => m.animal)).size, 2);
     r.room.destroy();
+  });
+
+  t('emotes: validated, rate-limited, broadcast with the seat (game) or member (lobby)', () => {
+    const r = mk({ botDelay: 100000 });
+    const em = (id) => (r.out[id] || []).filter((m) => m.t === 'emote');
+    let live = ['a', 'b'];
+    // advance the clock while the clients keep pinging (no timeouts)
+    const tick = (ms) => { for (let x = 0; x < ms; x += 250) { for (const id of live) r.room.message(id, { t: 'ping' }); clock.advance(Math.min(250, ms - x)); } };
+    r.join('a', 'A', 'ca', true);
+    r.join('b', 'B', 'cb');
+    // lobby: member index, seat -1, to everyone (the sender too)
+    r.msg('b', { t: 'emote', e: 'go' });
+    assert.deepEqual(em('a').map(({ seat, member, e }) => [seat, member, e]), [[-1, 1, 'go']]);
+    assert.equal(em('b').length, 1);
+    // unknown kinds, junk, strangers: ignored, never thrown
+    tick(2000);
+    for (const m of [{ t: 'emote' }, { t: 'emote', e: 'dance' }, { t: 'emote', e: 5 }, { t: 'emote', e: ['go'] }, { t: 'emote', e: 'toString' }]) r.msg('a', m);
+    r.room.open('x', {}); r.msg('x', { t: 'emote', e: 'go' }); // never said hello
+    assert.equal(em('a').length, 1);
+    assert.ok(!r.out.x);
+    // game: the sender's seat; ids increase
+    r.msg('a', { t: 'lobby-cmd', cmd: 'start' });
+    const seatA = r.last('a', 'view').view.seat, seatB = r.last('b', 'view').view.seat;
+    r.msg('a', { t: 'emote', e: 'hurray' });
+    r.msg('b', { t: 'emote', e: 'think-left' });
+    for (const id of ['a', 'b']) {
+      const l = em(id).slice(1);
+      assert.deepEqual(l.map(({ seat, e }) => [seat, e]), [[seatA, 'hurray'], [seatB, 'think-left']], id);
+      assert.ok(l[1].n > l[0].n && l[0].n > em(id)[0].n);
+      assert.ok(!('member' in l[0]));
+    }
+    // rate limit: one per 1.2 s ...
+    r.msg('a', { t: 'emote', e: 'sad' });
+    assert.equal(em('b').length, 3);
+    tick(1250);
+    r.msg('a', { t: 'emote', e: 'sad' });
+    assert.equal(em('b').length, 4);
+    // ... and 10 per 20 s: 2 sent above, 8 more of these 12 (every 1.25 s)
+    const fromA = () => em('b').filter((m) => m.seat === seatA).length;
+    for (let i = 0; i < 12; i++) { tick(1250); r.msg('a', { t: 'emote', e: EMOTES[i % 5] }); }
+    assert.equal(fromA(), 10);
+    tick(5000); // the first ones leave the window
+    r.msg('a', { t: 'emote', e: 'go' });
+    assert.equal(fromA(), 11);
+    // a disconnected member's seat (a bot now) can't emote; a rejoin can
+    r.room.closed('b'); clock.drain();
+    live = ['a'];
+    const before = em('a').length;
+    tick(2000);
+    r.msg('b', { t: 'emote', e: 'go' });
+    assert.equal(em('a').length, before);
+    r.join('b2', 'B', 'cb');
+    live = ['a', 'b2'];
+    tick(2000);
+    r.msg('b2', { t: 'emote', e: 'sad' });
+    assert.deepEqual([em('a').at(-1).seat, em('a').at(-1).e], [seatB, 'sad']);
+    assert.equal(em('b2').at(-1).e, 'sad');
+    r.room.destroy();
+  });
+
+  t('emoteAllowed: gap and burst', () => {
+    const times = [];
+    assert.equal(emoteAllowed(times, 0), true);
+    assert.equal(emoteAllowed(times, 1000), false);
+    assert.equal(emoteAllowed(times, 1200), true);
+    let ok = 2;
+    for (let tm = 2400; tm < 20000; tm += 1200) if (emoteAllowed(times, tm)) ok++;
+    assert.equal(ok, 10);
+    assert.equal(emoteAllowed(times, 20000), true); // the first one left the window
+    assert.equal(emoteAllowed([], 0, 400) && emoteAllowed([0], 1300, 400), false);
   });
 
   clock.uninstall();

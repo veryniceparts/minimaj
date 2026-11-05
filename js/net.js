@@ -9,7 +9,7 @@
 // room hands our seat back. A joiner that has never got in gives up after a
 // few tries with a message that says what failed (room server, host, or a
 // network that blocks peer-to-peer connections) instead of spinning forever.
-import { createRoom, PROTO } from './room.js';
+import { createRoom, PROTO, EMOTES, emoteAllowed } from './room.js';
 import { NET_CONFIG } from './config.js';
 
 const PREFIX = 'minimaj-v1-';
@@ -161,10 +161,11 @@ const isSignalErr = (err) => ['network', 'server-error', 'socket-error', 'socket
 /* ------------------------------------------------------------------ */
 
 // opts: { mode: 'lan'|'online', name, info?, code?, create?: bool, publicUrl? }
-// handlers: { onLobby, onView, onError(msg, fatal), onStatus(text), onConn(state) }
+// handlers: { onLobby, onView, onError(msg, fatal), onStatus(text), onConn(state),
+//             onEmote({ seat, member?, e, n }) }
 export function createSession(opts, handlers) {
   const h = {
-    onLobby() {}, onView() {}, onError() {}, onStatus() {}, onConn() {},
+    onLobby() {}, onView() {}, onError() {}, onStatus() {}, onConn() {}, onEmote() {},
     ...handlers,
   };
   const call = (name, ...a) => { try { h[name](...a); } catch (e) { console.error(name, e); } };
@@ -186,6 +187,7 @@ export function createSession(opts, handlers) {
   let lastPing = 0;
   let pingN = 0;
   let tickTimer = null;
+  const emoteTimes = []; // our own recent emotes: the room's rate limit, applied before sending
 
   // online-host state
   let room = null;
@@ -240,6 +242,12 @@ export function createSession(opts, handlers) {
       gotIn();
       isHost = !!msg.view.isHost;
       call('onView', msg.view);
+    } else if (msg.t === 'emote') {
+      if (EMOTES.indexOf(msg.e) >= 0 && Number.isInteger(msg.seat)) {
+        const ev = { seat: msg.seat, e: msg.e, n: typeof msg.n === 'number' ? msg.n : 0 };
+        if (Number.isInteger(msg.member)) ev.member = msg.member;
+        call('onEmote', ev);
+      }
     } else if (msg.t === 'error') {
       const fatal = !!msg.fatal;
       call('onError', String(msg.msg || 'Error'), fatal);
@@ -570,6 +578,13 @@ export function createSession(opts, handlers) {
     backToLobby() { send({ t: 'lobby-cmd', cmd: 'lobby' }); },
     playAgain() { send({ t: 'lobby-cmd', cmd: 'again' }); },
     reroll() { send({ t: 'lobby-cmd', cmd: 'reroll' }); }, // a new random mascot (lobby only)
+    // a mascot emote for everyone; false (nothing sent) when unknown, offline or too soon
+    emote(kind) {
+      if (EMOTES.indexOf(kind) < 0 || !transport || connState !== 'open') return false;
+      if (!emoteAllowed(emoteTimes, Date.now(), 400)) return false;
+      send({ t: 'emote', e: kind });
+      return true;
+    },
     close() { stop(); },
   };
 }

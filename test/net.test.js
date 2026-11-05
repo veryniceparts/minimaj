@@ -56,7 +56,7 @@ export async function runNetTests() {
 
   const mkClient = (name, cid, hostOk) => {
     store.set('minimaj-cid', cid);
-    const log = { lobby: null, view: null, errors: [], conn: [], status: [] };
+    const log = { lobby: null, view: null, errors: [], conn: [], status: [], emotes: [] };
     nextHostOk = hostOk;
     const info = { server: true, hostOk, lanUrls: ['http://192.168.1.5:7777'] };
     const s = createSession({ mode: 'lan', name, info }, {
@@ -65,6 +65,7 @@ export async function runNetTests() {
       onError: (msg, fatal) => log.errors.push([msg, fatal]),
       onConn: (st) => log.conn.push(st),
       onStatus: (t) => log.status.push(t),
+      onEmote: (e) => log.emotes.push(e),
     });
     return { s, log };
   };
@@ -101,6 +102,22 @@ export async function runNetTests() {
   assert.equal(A.log.view.isHost, true);
   assert.equal(B.log.view.isHost, false);
   const seatB = B.log.view.seat;
+  n++;
+
+  // emotes: sent through the room to everyone with the sender's seat; the client
+  // applies the room's rate limit itself (false = not sent); junk kinds are refused
+  assert.equal(B.s.emote('hurray'), true);
+  assert.equal(B.s.emote('sad'), false); // too soon
+  assert.equal(B.s.emote('dance'), false);
+  clock.advance(50);
+  assert.deepEqual(A.log.emotes.map(({ seat, e }) => [seat, e]), [[seatB, 'hurray']]);
+  assert.deepEqual(B.log.emotes.map(({ seat, e }) => [seat, e]), [[seatB, 'hurray']]);
+  assert.ok(A.log.emotes[0].n > 0 && !('member' in A.log.emotes[0]));
+  clock.advance(1700);
+  assert.equal(B.s.emote('think-left'), true);
+  clock.advance(50);
+  assert.deepEqual(A.log.emotes.at(-1).e, 'think-left');
+  assert.ok(A.log.emotes.at(-1).n > A.log.emotes[0].n);
   n++;
 
   // pings keep both alive for a long time
@@ -267,13 +284,14 @@ async function runOnlineTests() {
 
   const mk = (opts, win) => {
     def('window', win || mkWindow());
-    const log = { lobby: null, view: null, errors: [], conn: [], status: [] };
+    const log = { lobby: null, view: null, errors: [], conn: [], status: [], emotes: [] };
     const s = createSession(opts, {
       onLobby: (l) => { log.lobby = l; },
       onView: (v) => { log.view = v; },
       onError: (msg, fatal) => log.errors.push([msg, fatal]),
       onConn: (st) => log.conn.push(st),
       onStatus: (t) => log.status.push(t),
+      onEmote: (e) => log.emotes.push(e),
     });
     return { s, log, win: globalThis.window };
   };

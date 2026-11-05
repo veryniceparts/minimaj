@@ -1,7 +1,7 @@
 // 25 animal mascots as inline SVG, one per seat (the room picks them: view.players[i].animal).
 // Shared template: a round outlined head on a 64x64 canvas, plus per-animal ears, markings
 // and snout. Groups the CSS animates: .bd (whole body), .ear (each ear), .eo (open eyes,
-// blink), .eh (happy ^^ eyes, shown during the tap reaction). Markup is cached per animal.
+// blink) and the face variants of eyes() below, shown during emotes. Markup is cached per animal.
 
 const INK = '#3b2f45';
 const MIR = (s) => `<g transform="matrix(-1 0 0 1 64 0)">${s}</g>`;
@@ -14,15 +14,28 @@ const ol = (c, w = 2.2) => ` stroke="${c}" stroke-width="${w}" stroke-linejoin="
 
 // eyes: dx = half distance, light = pale eyes for dark eye patches
 // iris: coloured eyes (e.g. a black cat's gold eyes) — implies light-style eyes
+// Besides the open eyes (.eo) every animal gets the face variants the emotes switch to
+// (CSS shows one at a time): .eh happy ^^, .ex excited > <, .es sad (droopy eyes looking
+// down, worried brows, a tear), .lkl / .lkr looking up to the left / right.
 function eyes({ dx = 7, y = 36, r = 2.6, light = false, iris = '' } = {}) {
   const L = 32 - dx, R = 32 + dx;
   if (iris) light = true;
-  const one = (x) => light
-    ? `<circle cx="${x}" cy="${y}" r="${r}" fill="${iris || '#fff'}"/><circle cx="${x + 0.3}" cy="${y + 0.2}" r="${r * 0.55}" fill="${INK}"/>`
+  const c = light ? '#fff' : INK; // strokes drawn on the face
+  // one open eye; (px, py): where it looks, as a fraction of r
+  const one = (x, px = 0, py = 0) => light
+    ? `<circle cx="${x}" cy="${y}" r="${r}" fill="${iris || '#fff'}"/><circle cx="${x + 0.3 + px * r * 0.42}" cy="${y + 0.2 + py * r * 0.42}" r="${r * 0.55}" fill="${INK}"/>`
       + (iris ? `<circle cx="${x + r * 0.35}" cy="${y - r * 0.4}" r="${r * 0.28}" fill="#fff"/>` : '')
-    : `${E(x, y, r * 0.92, r * 1.1, INK)}<circle cx="${x + r * 0.32}" cy="${y - r * 0.42}" r="${r * 0.36}" fill="#fff"/>`;
-  const happy = (x) => line(`M${x - r} ${y + 0.9}q${r} -${r * 1.25} ${r * 2} 0`, light ? '#fff' : INK, 1.9);
-  return `<g class="eo">${one(L)}${one(R)}</g><g class="eh">${happy(L)}${happy(R)}</g>`;
+    : `${E(x + px * r * 0.45, y + py * r * 0.4, r * 0.92, r * 1.1, INK)}<circle cx="${x + r * 0.32 + px * r * 0.42}" cy="${y - r * 0.42 + py * r * 0.42}" r="${r * 0.36}" fill="#fff"/>`;
+  const happy = (x) => line(`M${x - r} ${y + 0.9}q${r} -${r * 1.25} ${r * 2} 0`, c, 1.9);
+  // > < : s = 1 on the left eye (points inward), -1 on the right
+  const squeeze = (x, s) => line(`M${x - s * r * 0.9} ${y - r * 0.85}L${x + s * r * 0.85} ${y}L${x - s * r * 0.9} ${y + r * 0.85}`, c, 1.8);
+  // worried brow: the inner end (towards the middle) higher
+  const brow = (x, s) => line(`M${x - s * r * 1.05} ${y - r * 1.55}L${x + s * r * 0.95} ${y - r * 2.15}`, c, 1.4);
+  const tear = `<path class="tear" d="M${L - r * 0.2} ${y + r * 1.1}q-2.5 4-.15 5.85q2.55 1.65 3.3-1.8q.15-1.8-3.15-4.05Z" fill="#8fd3ff" stroke="#4fa3d9" stroke-width=".5"/>`;
+  return `<g class="eo">${one(L)}${one(R)}</g><g class="eh">${happy(L)}${happy(R)}</g>`
+    + `<g class="ex">${squeeze(L, 1)}${squeeze(R, -1)}</g>`
+    + `<g class="es">${one(L, 0, 0.8)}${one(R, 0, 0.8)}${brow(L, 1)}${brow(R, -1)}${tear}</g>`
+    + `<g class="lkl">${one(L, -1, -0.6)}${one(R, -1, -0.6)}</g><g class="lkr">${one(L, 1, -0.6)}${one(R, 1, -0.6)}</g>`;
 }
 const cheeks = (y = 42.5, dx = 11.5, op = 0.55) => both(E(32 - dx, y, 3.4, 2.1, '#ff8fab', ` opacity="${op}"`));
 const nose = (y = 41, c = INK, rx = 1.9, ry = 1.35) => E(32, y, rx, ry, c);
