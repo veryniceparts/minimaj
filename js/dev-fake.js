@@ -1,7 +1,7 @@
 // Dev-only fake session (open the page with ?fake). Same API as js/net.js,
 // over a local Game: you are seat 0, computer players sit in seats 1-3.
 import { Game } from './game.js';
-import { pickAnimals } from './room.js';
+import { pickAnimals, ANIMAL_COUNT } from './room.js';
 
 const q = new URLSearchParams(location.search);
 const DELAY = +(q.get('delay') ?? 500);
@@ -40,7 +40,7 @@ export function createSession(opts, h) {
       const names = ['Momo', 'Yuzu', 'Kiwi'];
       // ?animals=3,7,1,0 pins the mascots (screenshots); otherwise random like the room
       const pin = (q.get('animals') || '').split(',').map(Number);
-      const an = pin.length === 4 && pin.every((x) => Number.isInteger(x) && x >= 0 && x < 20) ? pin : pickAnimals(4);
+      const an = pin.length === 4 && pin.every((x) => Number.isInteger(x) && x >= 0 && x < ANIMAL_COUNT) ? pin : pickAnimals(4);
       const g = new Game([{ name: opts.name, kind: 'human' }, ...names.map((name) => ({ name, kind: 'bot' }))].map((p, i) => ({ ...p, animal: an[i] })),
         { length: settings.length, botDelay: DELAY, onChange: () => flush(g) });
       game = g;

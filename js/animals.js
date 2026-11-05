@@ -1,4 +1,4 @@
-// 20 animal mascots as inline SVG, one per seat (the room picks them: view.players[i].animal).
+// 25 animal mascots as inline SVG, one per seat (the room picks them: view.players[i].animal).
 // Shared template: a round outlined head on a 64x64 canvas, plus per-animal ears, markings
 // and snout. Groups the CSS animates: .bd (whole body), .ear (each ear), .eo (open eyes,
 // blink), .eh (happy ^^ eyes, shown during the tap reaction). Markup is cached per animal.
@@ -13,10 +13,13 @@ const line = (d, c, w = 1.6, x = '') => `<path d="${d}" fill="none" stroke="${c}
 const ol = (c, w = 2.2) => ` stroke="${c}" stroke-width="${w}" stroke-linejoin="round"`;
 
 // eyes: dx = half distance, light = pale eyes for dark eye patches
-function eyes({ dx = 7, y = 36, r = 2.6, light = false } = {}) {
+// iris: coloured eyes (e.g. a black cat's gold eyes) — implies light-style eyes
+function eyes({ dx = 7, y = 36, r = 2.6, light = false, iris = '' } = {}) {
   const L = 32 - dx, R = 32 + dx;
+  if (iris) light = true;
   const one = (x) => light
-    ? `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff"/><circle cx="${x + 0.3}" cy="${y + 0.2}" r="${r * 0.55}" fill="${INK}"/>`
+    ? `<circle cx="${x}" cy="${y}" r="${r}" fill="${iris || '#fff'}"/><circle cx="${x + 0.3}" cy="${y + 0.2}" r="${r * 0.55}" fill="${INK}"/>`
+      + (iris ? `<circle cx="${x + r * 0.35}" cy="${y - r * 0.4}" r="${r * 0.28}" fill="#fff"/>` : '')
     : `${E(x, y, r * 0.92, r * 1.1, INK)}<circle cx="${x + r * 0.32}" cy="${y - r * 0.42}" r="${r * 0.36}" fill="#fff"/>`;
   const happy = (x) => line(`M${x - r} ${y + 0.9}q${r} -${r * 1.25} ${r * 2} 0`, light ? '#fff' : INK, 1.9);
   return `<g class="eo">${one(L)}${one(R)}</g><g class="eh">${happy(L)}${happy(R)}</g>`;
@@ -31,16 +34,17 @@ const round = (f, d, inner, cx = 15.5, cy = 20, r = 6.5) => `<circle cx="${cx}" 
 
 const DEFS = [
   ['Cat', () => {
-    const f = '#ffd3a5', d = '#c27a4a';
-    return ears(pointy(f, d, '#ffb3c1')) + head(f, d)
-      + line('M32 18.2v4.6M26.6 19.4l1 3.6M37.4 19.4l-1 3.6', d, 2, ' opacity=".65"')
-      + eyes() + nose(40.6, '#f07f98', 2, 1.4) + mouth()
-      + both(line('M8.6 39.6l7 1.2M8.8 45l7-1.6', d, 1.2, ' opacity=".7"')) + cheeks();
+    // black cat with golden eyes; a soft lilac outline keeps it visible on dark themes
+    const f = '#3a3346', d = '#8a7fa3';
+    return ears(pointy(f, d, '#f5a3b8')) + head(f, d)
+      + eyes({ iris: '#ffd35c', r: 3 }) + nose(40.8, '#f5a3b8', 2, 1.4) + mouth(43.2, '#d9cfe6')
+      + both(line('M8.6 39.6l7 1.2M8.8 45l7-1.6', '#d9cfe6', 1.2, ' opacity=".75"')) + cheeks(42.6, 11.5, 0.45);
   }],
   ['Dog', () => {
-    const f = '#f6dfbf', d = '#a5734d';
-    return head(f, d) + E(40, 32.5, 5.6, 5.2, '#e2b386') + E(32, 43.4, 8, 5.8, '#fffaf1')
-      + ears(P('M17 19.5Q6.5 19 6.8 33Q7.2 44 13.4 41.6Q16.4 32 21.6 22.4Z', '#c08a5c', ol(d)))
+    // grey dog
+    const f = '#dcdce4', d = '#7c7c8c';
+    return head(f, d) + E(40, 32.5, 5.6, 5.2, '#b9b9c7') + E(32, 43.4, 8, 5.8, '#f7f7fb')
+      + ears(P('M17 19.5Q6.5 19 6.8 33Q7.2 44 13.4 41.6Q16.4 32 21.6 22.4Z', '#9a9aab', ol(d)))
       + eyes() + nose(40.4, INK, 2.9, 2.1) + mouth(43.6) + cheeks(43.5, 12.5);
   }],
   ['Fox', () => {
@@ -111,9 +115,14 @@ const DEFS = [
       + eyes({ dx: 8, y: 34.4, r: 2.5 }) + nose(40.2, '#f07f98', 1.7, 1.2) + mouth(42.2) + cheeks(44, 13.4, 0.6);
   }],
   ['Duck', () => {
-    const f = '#ffe27c', d = '#cf9f24';
-    return P('M30.6 18Q28.6 10.6 33 9.2Q32.4 13 35.6 12.4Q35.6 16.6 33 18.4Z', f, ol(d, 1.8)) + head(f, d)
-      + eyes({ y: 35 }) + E(32, 43.4, 7.6, 3.8, '#ffa44c', ol('#d9772b', 1.2)) + line('M26.4 43.4h11.2', '#d9772b', 1, ' opacity=".7"') + cheeks(42, 13.4);
+    // mallard drake: green head, white collar, wide flat yellow bill
+    const f = '#4f9e6a', d = '#2f6b45';
+    return P('M13 50Q32 60 51 50L49 56Q32 63 15 56Z', '#fffaf2', ol('#c9c2d2', 1.2))
+      + head(f, d, 20, 18, 34) + E(32, 26, 12, 5, '#6fc08a', ' opacity=".35"')
+      + eyes({ dx: 8.4, y: 31.6, r: 2.5 })
+      + P('M18.6 42Q20 36.4 32 36.8Q44 36.4 45.4 42Q46 49.4 32 49.6Q18 49.4 18.6 42Z', '#ffc23d', ol('#d98a1f', 1.4))
+      + line('M21 43.4Q32 46.2 43 43.4', '#d98a1f', 1.2, ' opacity=".8"')
+      + E(28.4, 39.6, 1, 0.7, '#a8641a') + E(35.6, 39.6, 1, 0.7, '#a8641a');
   }],
   ['Sheep', () => {
     const w = '#fbf8ff', wd = '#ab9fc0', f = '#f6d2b8', d = '#b9876a';
@@ -125,12 +134,21 @@ const DEFS = [
       + [[24.6, 26.4], [32, 24.2], [39.4, 26.4]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="5.8" fill="${w}"${ol(wd, 1.6)}/>`).join('')
       + eyes({ dx: 6, y: 39.4, r: 2.4 }) + nose(44.2, INK, 1.6, 1.1) + mouth(46) + cheeks(45, 9.6, 0.6);
   }],
-  ['Monkey', () => {
-    const f = '#bb8d6b', d = '#7d5338', m = '#f6d6ba';
-    return ears(round(f, d, m, 11.4, 37, 6.6)) + head(f, d)
-      + both(E(25.6, 34.6, 7.6, 7.2, m)) + E(32, 44.2, 12.4, 8.4, m)
-      + line('M28.4 18.6q3.6-5.6 7 0', d, 1.8) + eyes({ dx: 6.4, y: 35 })
-      + E(30.6, 41, 0.9, 0.8, INK) + E(33.4, 41, 0.9, 0.8, INK) + line('M27.6 44.6q4.4 3.4 8.8 0', INK, 1.5) + cheeks(44, 13);
+  ['Crocodile', () => {
+    // olive head with back ridges, gold slit eyes on top, a long snout with nostrils
+    // at the tip and a row of teeth (darker and longer than the frog, so they differ)
+    const f = '#5f9e4f', d = '#356b2c', s = '#86bd68';
+    const bump = (x) => both(`<circle cx="23" cy="19.6" r="6.4" fill="${f}"${x}/>`);
+    const slit = (x) => `<rect x="${x - 0.6}" y="17.4" width="1.2" height="4.4" rx=".6" fill="${INK}"/>`;
+    return P('M24 12.6l2.4-3.4 2.2 3.4ZM30.8 11.6l1.2-3.6 1.2 3.6ZM35.4 12.6l2.2-3.4 2.4 3.4Z', d)
+      + bump(ol(d)) + E(32, 28.6, 17.4, 11, f, ol(d)) + bump('')
+      + P('M17.6 31Q16 61 32 61.4Q48 61 46.4 31Q39.4 27.6 32 28Q24.6 27.6 17.6 31Z', s, ol(d))
+      + `<g class="eo">${both(`<circle cx="23" cy="19.6" r="3.2" fill="#ffd34d"/>${slit(23)}`)}</g>`
+      + `<g class="eh">${both(line('M20 20.6q3-3.4 6 0', INK, 1.9))}</g>`
+      + E(28.6, 56.2, 1.4, 1, d) + E(35.4, 56.2, 1.4, 1, d) + E(32, 55.4, 6.6, 3.6, '#9bd07c', ' opacity=".55"')
+      + line('M20.4 44Q32 50.4 43.6 44', '#2b5a24', 1.6)
+      + P('M22.4 44.8l1.2 2.4 1.2-1.8ZM26.6 46.4l1 2.4 1.2-2ZM35.2 46.4l1.2 2 1-2.4ZM39.2 44.8l1.2 1.8 1.2-2.4Z', '#fffdf6')
+      + both(line('M21.4 33.4l1.6-1.4M21.8 37.6l1.6-1', d, 1.2, ' opacity=".55"'));
   }],
   ['Lion', () => {
     const f = '#ffd88f', d = '#c38937', m = '#eea35a', md = '#b9692b';
@@ -163,12 +181,57 @@ const DEFS = [
       + both(`<circle cx="25.4" cy="42.8" r=".8" fill="${INK}" opacity=".5"/><circle cx="23.2" cy="45" r=".8" fill="${INK}" opacity=".5"/>`)
       + mouth(42.4) + cheeks(44.6, 14, 0.45);
   }],
+  ['Shoebill', () => {
+    // hashibirokō: grey-blue head, little back tuft, huge pale hooked bill, stern pale eyes
+    const f = '#9eb0c4', d = '#5c6f86';
+    return P('M41 18Q47 10.6 50.4 13Q47.6 16.4 45 21Z', f, ol(d, 1.6)) + head(f, d, 20, 18, 31)
+      + eyes({ dx: 8.6, y: 27.6, r: 2.4, iris: '#f3e7a6' }) + both(line('M20.4 23.6l5.2 1.4', d, 1.6))
+      + P('M22.6 34Q32 31.4 41.4 34Q44.6 46 36.6 55.4Q33.6 59.4 32 61Q30.4 59.4 27.4 55.4Q19.4 46 22.6 34Z', '#e7ddc0', ol('#a39672', 1.5))
+      + line('M32 35.6V58.6', '#a39672', 1.1, ' opacity=".7"') + P('M29.6 56.6Q32 62 34.4 56.6Q32 58.4 29.6 56.6Z', '#a39672')
+      + cheeks(36.6, 13.6, 0.35);
+  }],
+  ['Bat', () => {
+    const f = '#8f7fb4', d = '#584a80', w = '#6f5f99';
+    const wing = P('M13.6 36Q3 30.4 1.6 38.6Q5 38 6.4 41.4Q9.4 39.4 11.4 43.6Q13.4 41.2 15.4 43.2Z', w, ol(d, 1.5));
+    return both(wing) + ears(P('M14.4 27.4L10.6 6.6Q11.8 5 13.8 6.6L27.8 20Z', f, ol(d)) + P('M16 23L13.6 11.4L23.4 19.6Z', '#f5b7cc'))
+      + head(f, d, 19.6, 17.6, 37) + E(32, 44, 9.6, 6.4, '#b7a9da')
+      + eyes({ dx: 7, y: 35.4 }) + nose(41.2, INK, 1.8, 1.2)
+      + line('M28.4 45.4q3.6 2.4 7.2 0', INK, 1.4) + P('M29.4 45.6l1 2.6 1-2.2ZM32.6 45.8l1 2.2 1-2.6Z', '#fff')
+      + cheeks(42.4, 12.2, 0.5);
+  }],
+  ['Moonfish', () => {
+    // manbō (ocean sunfish): tall fins above and below a round silver body
+    const f = '#b9c8de', d = '#6d82a3', fin = '#97abc9';
+    return P('M26 18Q27.6 2.6 36.4 3.6Q34.6 11 35.6 18Z', fin, ol(d, 1.8)) + P('M26 50Q27.6 63 35.4 61.4Q34 55 35.6 50Z', fin, ol(d, 1.8))
+      + E(32, 34, 21.6, 18.6, f, ol(d)) + P('M49 25Q57.4 34 49 43Q52.4 34 49 25Z', fin, ol(d, 1.4))
+      + E(28, 41.4, 14, 8.4, '#dfe8f4', ' opacity=".8"')
+      + line('M43.6 24.6q2.4 9.4 0 18.8', d, 1.2, ' opacity=".45"')
+      + eyes({ dx: 7.4, y: 31 }) + E(32, 39.6, 2.2, 1.8, '#5d6f8f') + cheeks(37.6, 12.6, 0.5);
+  }],
+  ['Pigeon', () => {
+    // grey head, shimmering green/purple neck, orange eyes, little beak with a white cere
+    const f = '#a9adbf', d = '#666b81';
+    return P('M12.6 47Q32 58.4 51.4 47Q50.4 55 32 56.8Q13.6 55 12.6 47Z', '#7fbf9f', ol('#4f8673', 1.2))
+      + P('M15 47.6Q32 56 49 47.6Q47 50.6 32 53.4Q17 50.6 15 47.6Z', '#b48ad6', ' opacity=".75"')
+      + head(f, d, 19.6, 18, 33) + eyes({ dx: 7.6, y: 31.6, r: 2.5, iris: '#ff9b4a' })
+      + E(32, 37.6, 3.2, 1.8, '#f2eef6') + P('M28.8 38.6Q32 37.2 35.2 38.6L32 44.6Z', '#4d4a5a')
+      + cheeks(39.6, 12.4, 0.45);
+  }],
+  ['Sparrow', () => {
+    // chestnut cap, white cheeks with a black spot, little black bib
+    const f = '#f4ead8', d = '#8a6440', cap = '#a8693c';
+    return head(f, d, 20.6, 18.6, 36) + P('M11.6 34Q12 17.6 32 17.4Q52 17.6 52.4 34Q46 26.4 32 26.8Q18 26.4 11.6 34Z', cap)
+      + both(E(17.2, 40.4, 3, 2.4, '#3b2f45', ' opacity=".85"'))
+      + eyes({ dx: 7.4, y: 34.6, r: 2.4 })
+      + P('M29.2 40Q32 38.6 34.8 40L32 45Z', '#4a3a36')
+      + both(line('M14 26.4l-2.6-1.6M17.6 23.4l-1.6-2.4', '#7a4a28', 1.4, ' opacity=".7"')) + cheeks(43.4, 9.6, 0.5);
+  }],
 ];
 
 export const ANIMAL_NAMES = DEFS.map(([n]) => n);
 export const ANIMAL_COUNT = DEFS.length;
 // which idle moves make sense (all have blink/hop/tilt/wag; these also have ears that move)
-const EARLESS = new Set(['Penguin', 'Duck', 'Frog']);
+const EARLESS = new Set(['Penguin', 'Duck', 'Frog', 'Crocodile', 'Shoebill', 'Moonfish', 'Pigeon', 'Sparrow']);
 export const animalMoves = (i) => (EARLESS.has(ANIMAL_NAMES[i]) ? ['blink', 'hop', 'tilt', 'wag'] : ['blink', 'ear', 'hop', 'tilt', 'wag']);
 
 const cache = new Map();

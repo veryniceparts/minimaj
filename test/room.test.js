@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { installFakeClock } from './fakeclock.js';
 import { createRoom, PROTO, MIN_PROTO, ANIMAL_COUNT } from '../js/room.js';
+import { ANIMAL_COUNT as ART_COUNT } from '../js/animals.js';
 
 export function runRoomTests() {
   const clock = installFakeClock();
@@ -30,6 +31,10 @@ export function runRoomTests() {
     const msg = (id, m) => { room.message(id, m); clock.drain(); };
     return { room, env, out, closedIds, last, join, msg };
   };
+
+  t('room animal count matches the art in js/animals.js', () => {
+    assert.equal(ANIMAL_COUNT, ART_COUNT);
+  });
 
   t('host rule and lobby', () => {
     const r = mk();
