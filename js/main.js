@@ -115,7 +115,43 @@ const sfx = {
 
 const ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg>';
 
+// Full-screen toggle next to the menu button. Only where the browser supports
+// it for pages (not iPhone Safari) and not inside the Android app's WebView,
+// which already fills the screen.
+const FS_ENTER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+const FS_EXIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+function setupFullscreen() {
+  const btn = $('fsbtn');
+  const d = document, el = d.documentElement;
+  const supported = (d.fullscreenEnabled || d.webkitFullscreenEnabled) && (el.requestFullscreen || el.webkitRequestFullscreen);
+  const inAndroidApp = /; wv\)/.test(navigator.userAgent);
+  if (!btn || !supported || inAndroidApp) return;
+  const isFs = () => !!(d.fullscreenElement || d.webkitFullscreenElement);
+  const sync = () => {
+    const on = isFs();
+    btn.innerHTML = on ? FS_EXIT : FS_ENTER;
+    btn.setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
+    btn.title = on ? 'Exit full screen' : 'Full screen';
+  };
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    try {
+      if (isFs()) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+      else {
+        const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+        if (p && p.catch) p.catch(() => toast('Full screen is not available here'));
+      }
+    } catch { toast('Full screen is not available here'); }
+  };
+  d.addEventListener('fullscreenchange', sync);
+  d.addEventListener('webkitfullscreenchange', sync);
+  sync();
+  btn.hidden = false;
+  d.documentElement.classList.add('has-fs');
+}
+
 function setupMenu() {
+  setupFullscreen();
   const btn = $('menubtn');
   btn.innerHTML = ICON;
   btn.hidden = false; // on every screen, so the theme can be changed anytime
