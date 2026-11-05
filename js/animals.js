@@ -1,4 +1,4 @@
-// 25 animal mascots as inline SVG, one per seat (the room picks them: view.players[i].animal).
+// 27 animal mascots as inline SVG, one per seat (the room picks them: view.players[i].animal).
 // Shared template: a round outlined head on a 64x64 canvas, plus per-animal ears, markings
 // and snout. Groups the CSS animates: .bd (whole body), .ear (each ear), .eo (open eyes,
 // blink) and the face variants of eyes() below, shown during emotes. Markup is cached per animal.
@@ -220,14 +220,16 @@ const DEFS = [
       + line('M43.6 24.6q2.4 9.4 0 18.8', d, 1.2, ' opacity=".45"')
       + eyes({ dx: 7.4, y: 31 }) + E(32, 39.6, 2.2, 1.8, '#5d6f8f') + cheeks(37.6, 12.6, 0.5);
   }],
-  ['Pigeon', () => {
-    // grey head, shimmering green/purple neck, orange eyes, little beak with a white cere
-    const f = '#a9adbf', d = '#666b81';
-    return P('M12.6 47Q32 58.4 51.4 47Q50.4 55 32 56.8Q13.6 55 12.6 47Z', '#7fbf9f', ol('#4f8673', 1.2))
-      + P('M15 47.6Q32 56 49 47.6Q47 50.6 32 53.4Q17 50.6 15 47.6Z', '#b48ad6', ' opacity=".75"')
-      + head(f, d, 19.6, 18, 33) + eyes({ dx: 7.6, y: 31.6, r: 2.5, iris: '#ff9b4a' })
-      + E(32, 37.6, 3.2, 1.8, '#f2eef6') + P('M28.8 38.6Q32 37.2 35.2 38.6L32 44.6Z', '#4d4a5a')
-      + cheeks(39.6, 12.4, 0.45);
+  ['Tit', () => {
+    // shijūkara: black cap and bib stripe, big white cheeks, a hint of yellow-green below
+    const k = '#3a3446', d = '#5f5872';
+    return P('M14 48Q32 60 50 48Q49 56 32 57.6Q15 56 14 48Z', '#d9e7a0', ol('#9fb35c', 1.2))
+      + head('#fbfaf6', d, 20, 18.4, 35)
+      + P('M12 35Q12.4 16.6 32 16.6Q51.6 16.6 52 35Q47 30 41 30.6Q36 31 32 35Q28 31 23 30.6Q17 30 12 35Z', k)
+      + P('M28.6 42Q32 40.4 35.4 42L34.4 53.4Q32 55.4 29.6 53.4Z', k)
+      + eyes({ dx: 8, y: 30.6, r: 3, light: true })
+      + P('M30 38.2Q32 37 34 38.2L32 41.6Z', '#4a4458')
+      + cheeks(41.6, 11.8, 0.5);
   }],
   ['Sparrow', () => {
     // chestnut cap, white cheeks with a black spot, little black bib
@@ -238,12 +240,35 @@ const DEFS = [
       + P('M29.2 40Q32 38.6 34.8 40L32 45Z', '#4a3a36')
       + both(line('M14 26.4l-2.6-1.6M17.6 23.4l-1.6-2.4', '#7a4a28', 1.4, ' opacity=".7"')) + cheeks(43.4, 9.6, 0.5);
   }],
+  ['Kingfisher', () => {
+    // kawasemi: turquoise head with a speckled crown, orange cheeks, white throat, long dark bill
+    const b = '#3fa7c9', d = '#256f8a';
+    return P('M14.6 48Q32 60.6 49.4 48Q48.4 56.4 32 58Q15.6 56.4 14.6 48Z', '#f29a4e', ol('#c46b27', 1.2))
+      + head(b, d, 20.4, 18.6, 34)
+      + both(`<circle cx="24" cy="22.6" r="1.1" fill="#bdeefc" opacity=".8"/><circle cx="28.6" cy="20.4" r="1" fill="#bdeefc" opacity=".8"/>`)
+      + both(P('M12.6 34Q14 44 22.6 45Q25.4 40.4 23.4 35.6Q18 32.6 12.6 34Z', '#f7a35d'))
+      + E(32, 46, 6, 4.4, '#fffaf2')
+      + eyes({ dx: 7.4, y: 31.6, r: 2.4 })
+      + P('M29 36.4Q32 35 35 36.4L33 50Q32 51.6 31 50Z', '#3b3346')
+      + line('M32 37v12.4', '#5d5568', 0.8, ' opacity=".7"') + cheeks(41, 13.6, 0.35);
+  }],
+  ['Nuthatch', () => {
+    // gojūkara: blue-grey cap, black eye stripe, white cheeks, buff flanks, pointed beak
+    const g = '#8fa3c4', d = '#5a6b8c';
+    return P('M14 48Q32 59.6 50 48Q49 56 32 57.6Q15 56 14 48Z', '#f2c49a', ol('#c99666', 1.2))
+      + head('#fdfaf4', d, 20.4, 18.6, 35)
+      + P('M11.8 33.4Q12.2 16.6 32 16.6Q51.8 16.6 52.2 33.4Q47 28.4 32 28.4Q17 28.4 11.8 33.4Z', g)
+      + both(P('M10.6 34.6Q18 31.6 27 33.6L26.6 36.6Q18 35.6 11.2 38.4Z', '#3a3446'))
+      + eyes({ dx: 8, y: 34.8, r: 2.9, light: true })
+      + P('M29.6 39.4Q32 38 34.4 39.4L32 46Z', '#4a4458')
+      + both(E(19, 47, 3.6, 2.2, '#f2c49a', ' opacity=".8"')) + cheeks(42.6, 12, 0.4);
+  }],
 ];
 
 export const ANIMAL_NAMES = DEFS.map(([n]) => n);
 export const ANIMAL_COUNT = DEFS.length;
 // which idle moves make sense (all have blink/hop/tilt/wag; these also have ears that move)
-const EARLESS = new Set(['Penguin', 'Duck', 'Frog', 'Crocodile', 'Shoebill', 'Moonfish', 'Pigeon', 'Sparrow']);
+const EARLESS = new Set(['Penguin', 'Duck', 'Frog', 'Crocodile', 'Shoebill', 'Moonfish', 'Tit', 'Kingfisher', 'Nuthatch', 'Sparrow']);
 export const animalMoves = (i) => (EARLESS.has(ANIMAL_NAMES[i]) ? ['blink', 'hop', 'tilt', 'wag'] : ['blink', 'ear', 'hop', 'tilt', 'wag']);
 
 const cache = new Map();
