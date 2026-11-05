@@ -6,8 +6,10 @@ import (
 	"bufio"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -167,7 +169,11 @@ func alreadyRunning(port int) bool {
 		return false
 	}
 	defer resp.Body.Close()
-	var buf [256]byte
-	n, _ := resp.Body.Read(buf[:])
-	return resp.StatusCode == 200 && strings.Contains(string(buf[:n]), `"server":true`)
+	// Decode the whole (small) body: one Read may return only part of it, and
+	// "server" comes after the lanUrls list, which can be long.
+	var info struct {
+		Server bool `json:"server"`
+	}
+	err = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&info)
+	return err == nil && resp.StatusCode == 200 && info.Server
 }

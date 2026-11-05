@@ -569,6 +569,7 @@ export function createSession(opts, handlers) {
     setSettings(s) { send({ t: 'lobby-cmd', cmd: 'settings', settings: s }); },
     backToLobby() { send({ t: 'lobby-cmd', cmd: 'lobby' }); },
     playAgain() { send({ t: 'lobby-cmd', cmd: 'again' }); },
+    reroll() { send({ t: 'lobby-cmd', cmd: 'reroll' }); }, // a new random mascot (lobby only)
     close() { stop(); },
   };
 }

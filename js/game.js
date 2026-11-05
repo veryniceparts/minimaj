@@ -55,6 +55,8 @@ export class Game {
   setKind(seat, kind, name) {
     this.players[seat].kind = kind;
     if (name) this.players[seat].name = name;
+    // a human who leaves the result screen must not hold up the others' "Next hand"
+    if (this.phase === 'end') this.tryAdvance();
     this.changed();
   }
 

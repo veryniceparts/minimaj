@@ -891,3 +891,26 @@ summary { cursor: pointer; font-weight: 600; }
   .ani.me.tap::after, .ani.me.tap .hearts { animation: none !important; display: none; }
   @keyframes ani-calm { 0% { transform: scale(.92); opacity: .6; } 100% { transform: none; opacity: 1; } }
 }
+
+/* lobby mascots */
+.seats .mav { background: none !important; overflow: visible; }
+.seats .mav svg { display: block; width: 116%; height: 116%; margin: -8%; overflow: visible; filter: drop-shadow(0 1px 1px rgba(var(--sh), .3)); }
+.seats .mav .eh { display: none; }
+.seats li.me { padding: 0; }
+.seats .reroll {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; margin: 0; padding: 4px 8px 4px 6px;
+  border: 0; border-radius: 14px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.seats .reroll .mav { width: 38px; height: 38px; }
+.seats .reroll small { color: var(--accent); font-weight: 700; }
+.seats .reroll:not(:disabled):hover { background: rgba(var(--hl), .05); }
+.seats .reroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.seats .reroll:disabled { cursor: default; }
+.seats .reroll:disabled small { color: var(--muted); font-weight: 500; }
+.seats .mav.pop svg { animation: mav-pop .45s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes mav-pop { 0% { transform: scale(.3) rotate(-14deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .seats .mav.pop svg { animation: mav-fade .25s ease-out; }
+  @keyframes mav-fade { from { opacity: .3; } to { opacity: 1; } }
+}
+@media (max-width: 400px) { .seats .reroll .lw { display: none; } }

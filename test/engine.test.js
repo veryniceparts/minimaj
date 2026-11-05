@@ -522,6 +522,18 @@ function scenarioTests(t) {
     assert.equal(g.phase, 'over');
     assert.equal(total(g), 100000);
   });
+  t('result screen: a human who leaves (seat turns bot) does not stall the ready players', () => {
+    const g = rig({ hands: ['5s147m258p369s127z', '234m567p234s88s67s', FILL[2], FILL[3]], draws: '9m' });
+    discard(g, 0, '5s');
+    act(g, 1, { type: 'ron' });
+    assert.equal(g.phase, 'end');
+    for (const s of [0, 1, 2]) act(g, s, { type: 'ready' });
+    assert.equal(g.phase, 'end');
+    g.setKind(3, 'bot'); // seat 3 disconnects before saying ready
+    assert.equal(g.phase, 'discard', 'next hand starts');
+    assert.equal(g.kyoku, 1);
+    g.stop();
+  });
   t('views never show hidden tiles during play', () => {
     const g = rig({ hands: ['5s147m258p369s127z', '234m567p234s88s67s', FILL[2], FILL[3]], draws: '9m' });
     for (let s = 0; s < 4; s++) checkView(g, g.view(s), s);

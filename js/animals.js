@@ -135,20 +135,19 @@ const DEFS = [
       + eyes({ dx: 6, y: 39.4, r: 2.4 }) + nose(44.2, INK, 1.6, 1.1) + mouth(46) + cheeks(45, 9.6, 0.6);
   }],
   ['Crocodile', () => {
-    // olive head with back ridges, gold slit eyes on top, a long snout with nostrils
-    // at the tip and a row of teeth (darker and longer than the frog, so they differ)
-    const f = '#5f9e4f', d = '#356b2c', s = '#86bd68';
-    const bump = (x) => both(`<circle cx="23" cy="19.6" r="6.4" fill="${f}"${x}/>`);
-    const slit = (x) => `<rect x="${x - 0.6}" y="17.4" width="1.2" height="4.4" rx=".6" fill="${INK}"/>`;
-    return P('M24 12.6l2.4-3.4 2.2 3.4ZM30.8 11.6l1.2-3.6 1.2 3.6ZM35.4 12.6l2.2-3.4 2.4 3.4Z', d)
-      + bump(ol(d)) + E(32, 28.6, 17.4, 11, f, ol(d)) + bump('')
-      + P('M17.6 31Q16 61 32 61.4Q48 61 46.4 31Q39.4 27.6 32 28Q24.6 27.6 17.6 31Z', s, ol(d))
-      + `<g class="eo">${both(`<circle cx="23" cy="19.6" r="3.2" fill="#ffd34d"/>${slit(23)}`)}</g>`
-      + `<g class="eh">${both(line('M20 20.6q3-3.4 6 0', INK, 1.9))}</g>`
-      + E(28.6, 56.2, 1.4, 1, d) + E(35.4, 56.2, 1.4, 1, d) + E(32, 55.4, 6.6, 3.6, '#9bd07c', ' opacity=".55"')
-      + line('M20.4 44Q32 50.4 43.6 44', '#2b5a24', 1.6)
-      + P('M22.4 44.8l1.2 2.4 1.2-1.8ZM26.6 46.4l1 2.4 1.2-2ZM35.2 46.4l1.2 2 1-2.4ZM39.2 44.8l1.2 1.8 1.2-2.4Z', '#fffdf6')
-      + both(line('M21.4 33.4l1.6-1.4M21.8 37.6l1.6-1', d, 1.2, ' opacity=".55"'));
+    // soft mint-green croc: small eye bumps close together on top, a long rounded paler
+    // snout with little nostrils at the tip, a gentle smile with two tiny teeth and soft
+    // scale spots (narrow and tall, unlike the frog's wide face and far-apart eyes)
+    const f = '#8fd6a4', d = '#4f9468', s = '#b4e8bf';
+    const bump = (x) => both(`<circle cx="25" cy="20.4" r="6" fill="${f}"${x}/>`);
+    return bump(ol(d)) + E(32, 29, 17.6, 12.6, f, ol(d)) + bump('')
+      + P('M19 33Q17.6 60 32 60Q46.4 60 45 33Q38.6 30 32 30.2Q25.4 30 19 33Z', s, ol(d))
+      + both(E(27.2, 31.2, 2.2, 1.4, d, ' opacity=".3"') + E(19.8, 27, 1.6, 1.2, d, ' opacity=".25"'))
+      + eyes({ dx: 7, y: 21.4, r: 2.7 })
+      + both(E(29.4, 50.6, 1.2, 0.9, d))
+      + line('M23.2 51.4Q32 58.2 40.8 51.4', '#3f7553', 1.6)
+      + P('M27.4 54.2q.8 2 1.7.5ZM34.9 54.7q.9 1.5 1.7-.5Z', '#fffdf6')
+      + cheeks(43, 8.6, 0.6);
   }],
   ['Lion', () => {
     const f = '#ffd88f', d = '#c38937', m = '#eea35a', md = '#b9692b';

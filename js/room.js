@@ -25,6 +25,15 @@ export function pickAnimals(n) {
   }
   return a.slice(0, n);
 }
+
+// one random animal index not in `taken` (array of indices); -1 if none is free
+export function pickAnimalExcept(taken) {
+  const free = [];
+  for (let i = 0; i < ANIMAL_COUNT; i++) if (taken.indexOf(i) < 0) free.push(i);
+  return free.length ? free[Math.floor(Math.random() * free.length)] : -1;
+}
+export const MAX_REROLLS = 3; // per member per lobby visit (reset when a game ends)
+const REMEMBER_MAX = 32; // lobby leavers whose mascot is kept for a rejoin (same cid)
 const TIMEOUT_MS = 9000;
 const CHECK_MS = 1000;
 const RATE_WINDOW_MS = 1000;
@@ -38,7 +47,8 @@ function cleanName(s) {
 export function createRoom(env) {
   const log = (...a) => { try { if (env.log) env.log(...a); } catch (e) { /* ignore */ } };
   const conns = new Map(); // connId -> { meta, last, winStart, count, member }
-  let members = []; // { cid, name, connId|null, gone }
+  let members = []; // { cid, name, connId|null, gone, animal, rerolls (used) }
+  const remembered = new Map(); // cid -> { animal, rerolls } of members who left the lobby
   let hostCid = null;
   const settings = { length: 1 };
   let game = null;
@@ -88,7 +98,9 @@ export function createRoom(env) {
 
   function lobbyFor(me) {
     return {
-      members: members.map((m) => ({ name: m.name, host: isHost(m), you: m === me, connected: m.connId != null })),
+      members: members.map((m) => ({ name: m.name, host: isHost(m), you: m === me, connected: m.connId != null, animal: m.animal })),
+      rerollsLeft: me ? Math.max(0, MAX_REROLLS - (me.rerolls || 0)) : 0,
+      maxRerolls: MAX_REROLLS,
       settings: { length: settings.length },
       isHost: isHost(me),
       max: MAX,
@@ -117,11 +129,19 @@ export function createRoom(env) {
 
   /* ---------------- membership ---------------- */
 
+  // keep a leaver's mascot (and used rerolls) in case the same client comes back
+  function remember(m) {
+    remembered.delete(m.cid);
+    remembered.set(m.cid, { animal: m.animal, rerolls: m.rerolls || 0 });
+    if (remembered.size > REMEMBER_MAX) remembered.delete(remembered.keys().next().value);
+  }
+
   function detach(m) {
     // member lost its connection
     m.connId = null;
     if (!game) {
       members = members.filter((x) => x !== m);
+      remember(m);
       markLobby();
     } else {
       m.gone = true;
@@ -165,7 +185,17 @@ export function createRoom(env) {
       m.connId = connId; m.name = name; m.gone = false;
     } else if (!game) {
       if (members.length >= MAX) { fatal(connId, 'Room is full.', 'full'); return; }
-      m = { cid, name, connId, gone: false };
+      m = { cid, name, connId, gone: false, animal: -1, rerolls: 0 };
+      const taken = members.map((x) => x.animal);
+      const prev = remembered.get(cid);
+      remembered.delete(cid);
+      if (prev && Number.isInteger(prev.animal) && prev.animal >= 0 && taken.indexOf(prev.animal) < 0) {
+        m.animal = prev.animal;
+        m.rerolls = prev.rerolls;
+      } else {
+        m.animal = pickAnimalExcept(taken);
+        if (prev) m.rerolls = prev.rerolls;
+      }
       members.push(m);
     } else {
       // join a running game: take over a computer seat
@@ -173,7 +203,8 @@ export function createRoom(env) {
       if (seat < 0) { fatal(connId, 'Game is full.', 'full'); return; }
       const old = seats[seat];
       if (old) members = members.filter((x) => x !== old);
-      m = { cid, name, connId, gone: false };
+      // keep the computer's mascot: it is already on everyone's table
+      m = { cid, name, connId, gone: false, animal: game.players[seat].animal, rerolls: 0 };
       members.push(m);
       seats[seat] = m;
     }
@@ -191,6 +222,7 @@ export function createRoom(env) {
   function onLobbyCmd(connId, c, msg) {
     const m = c.member;
     if (!m) return;
+    if (msg.cmd === 'reroll') { reroll(connId, m); return; }
     if (!isHost(m)) { send(connId, { t: 'error', msg: 'Only the host can do that.', fatal: false }); return; }
     if (msg.cmd === 'settings') {
       const s = msg.settings;
@@ -206,6 +238,19 @@ export function createRoom(env) {
     }
   }
 
+  // a new random mascot for one lobby member (any member, not only the host)
+  function reroll(connId, m) {
+    if (game) { send(connId, { t: 'error', msg: 'You can change your mascot in the lobby only.', fatal: false }); return; }
+    if ((m.rerolls || 0) >= MAX_REROLLS) { send(connId, { t: 'error', msg: 'No rerolls left', fatal: false }); return; }
+    const taken = members.map((x) => x.animal);
+    if (m.animal >= 0) taken.push(m.animal);
+    const a = pickAnimalExcept(taken);
+    if (a < 0) return;
+    m.animal = a;
+    m.rerolls = (m.rerolls || 0) + 1;
+    markLobby();
+  }
+
   function startGame() {
     // Shuffle all four seats, empty ones (computers) included, so the first
     // dealer (seat 0, East / oya) is random — not always a human.
@@ -217,7 +262,19 @@ export function createRoom(env) {
     }
     seats = [0, 1, 2, 3].map((i) => order[i] || null);
     let b = 0;
-    const animals = pickAnimals(4);
+    // humans keep the mascot they had in the lobby; computers get free ones
+    const taken = [];
+    for (const m of seats) {
+      if (!m) continue;
+      if (!(Number.isInteger(m.animal) && m.animal >= 0 && m.animal < ANIMAL_COUNT) || taken.indexOf(m.animal) >= 0) m.animal = pickAnimalExcept(taken);
+      taken.push(m.animal);
+    }
+    const animals = seats.map((m) => {
+      if (m) return m.animal;
+      const a = pickAnimalExcept(taken);
+      taken.push(a);
+      return a;
+    });
     const players = seats.map((m, i) => ({ ...(m ? { name: m.name, kind: 'human' } : { name: BOT_NAMES[b++], kind: 'bot' }), animal: animals[i] }));
     const opts = { length: settings.length, onChange: () => markView() };
     if (env.botDelay != null) opts.botDelay = env.botDelay;
@@ -234,8 +291,10 @@ export function createRoom(env) {
 
   function backToLobby() {
     stopGame();
+    // a fresh set of rerolls after each game (for those who dropped out too)
+    for (const r of remembered.values()) r.rerolls = 0;
+    for (const m of members) { m.gone = false; m.rerolls = 0; if (m.connId == null) remember(m); }
     members = members.filter((m) => m.connId != null);
-    for (const m of members) m.gone = false;
     markLobby();
   }
 

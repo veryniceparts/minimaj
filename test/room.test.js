@@ -295,6 +295,83 @@ export function runRoomTests() {
     }
   });
 
+  t('lobby mascots: assigned on join, rerolls, kept at start and on rejoin', () => {
+    for (let k = 0; k < 10; k++) {
+      const r = mk({ botDelay: 100000 });
+      r.join('a', 'A', 'ca', true);
+      r.join('b', 'B', 'cb');
+      r.join('c', 'C', 'cc');
+      const lob = (id) => r.last(id, 'lobby').lobby;
+      const an = () => lob('a').members.map((m) => m.animal);
+      let a0 = an();
+      assert.ok(a0.every((x) => Number.isInteger(x) && x >= 0 && x < ANIMAL_COUNT), `ids ${a0}`);
+      assert.equal(new Set(a0).size, 3, `distinct on join ${a0}`);
+      assert.deepEqual(lob('b').members.map((m) => m.animal), a0, 'everyone sees the same');
+      assert.equal(lob('b').rerollsLeft, 3);
+      // B (not the host) rerolls three times: a new animal each time, others untouched
+      for (let i = 0; i < 3; i++) {
+        r.msg('b', { t: 'lobby-cmd', cmd: 'reroll' });
+        const a1 = an();
+        assert.notEqual(a1[1], a0[1], 'changed');
+        assert.equal(a1[0], a0[0]); assert.equal(a1[2], a0[2]);
+        assert.equal(new Set(a1).size, 3, `still distinct ${a1}`);
+        assert.equal(lob('b').rerollsLeft, 2 - i);
+        assert.equal(lob('a').rerollsLeft, 3, 'own allowance only');
+        a0 = a1;
+      }
+      assert.ok(!r.last('b', 'error'));
+      r.msg('b', { t: 'lobby-cmd', cmd: 'reroll' });
+      assert.deepEqual([r.last('b', 'error').msg, r.last('b', 'error').fatal], ['No rerolls left', false]);
+      assert.deepEqual(an(), a0, 'unchanged over the limit');
+      // junk never throws
+      r.msg('b', { t: 'lobby-cmd', cmd: { x: 1 } });
+      r.msg('b', { t: 'lobby-cmd' });
+      r.msg('zz', { t: 'lobby-cmd', cmd: 'reroll' }); // no hello
+      // C leaves and comes back in the lobby (same cid): same mascot, same allowance
+      r.msg('c', { t: 'lobby-cmd', cmd: 'reroll' });
+      const cAnimal = an()[2];
+      r.room.closed('c'); clock.drain();
+      r.join('c2', 'C', 'cc');
+      assert.equal(lob('c2').members[2].animal, cAnimal, 'kept on rejoin');
+      assert.equal(lob('c2').rerollsLeft, 2);
+      a0 = an();
+      // start: humans keep their mascots, computers get distinct others
+      r.msg('a', { t: 'lobby-cmd', cmd: 'start' });
+      const v = r.last('a', 'view').view;
+      const pa = v.players.map((p) => p.animal);
+      assert.equal(new Set(pa).size, 4, `distinct at start ${pa}`);
+      for (const [name, x] of [['A', a0[0]], ['B', a0[1]], ['C', a0[2]]]) assert.equal(v.players.find((p) => p.name === name).animal, x, name);
+      // no rerolls mid-game
+      r.msg('a', { t: 'lobby-cmd', cmd: 'reroll' });
+      assert.equal(r.last('a', 'error').fatal, false);
+      assert.deepEqual(r.last('a', 'view').view.players.map((p) => p.animal), pa);
+      // reconnect mid-game: same seat, same mascot
+      r.room.closed('b'); clock.drain();
+      r.join('b2', 'B', 'cb');
+      assert.equal(r.last('b2', 'view').view.players[r.last('b2', 'view').view.seat].animal, a0[1]);
+      // back to the lobby: mascots kept, a fresh set of rerolls
+      r.msg('a', { t: 'lobby-cmd', cmd: 'lobby' });
+      assert.deepEqual(lob('a').members.map((m) => m.animal), a0);
+      assert.equal(lob('b2').rerollsLeft, 3);
+      r.room.destroy();
+    }
+  });
+
+  t('a newcomer taking a computer seat mid-game keeps its mascot', () => {
+    const r = mk({ botDelay: 100000 });
+    r.join('a', 'A', 'ca', true);
+    r.msg('a', { t: 'lobby-cmd', cmd: 'start' });
+    const before = r.last('a', 'view').view.players.map((p) => p.animal);
+    r.join('d', 'D', 'cd');
+    const v = r.last('d', 'view').view;
+    assert.deepEqual(v.players.map((p) => p.animal), before);
+    r.msg('a', { t: 'lobby-cmd', cmd: 'lobby' });
+    const l = r.last('d', 'lobby').lobby;
+    assert.equal(l.members.find((m) => m.you).animal, before[v.seat]);
+    assert.equal(new Set(l.members.map((m) => m.animal)).size, 2);
+    r.room.destroy();
+  });
+
   clock.uninstall();
   return n;
 }

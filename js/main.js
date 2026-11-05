@@ -1,5 +1,6 @@
 import { Table, tileHTML, roundName } from './ui.js';
 import { codeForUrl, parseTableInput, scanTables } from './lan.js';
+import { animalSVG, ANIMAL_NAMES } from './animals.js';
 
 const app = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -465,16 +466,28 @@ function qrMarkup(url) {
 }
 
 let stopArmed = false;
+let lobbyAnimals = []; // mascots last shown per seat (a change pops)
+const isAnimal = (a) => Number.isInteger(a) && a >= 0;
 function showLobby(l) {
-  if (screen !== 'lobby') { setScreen('lobby'); stopArmed = false; }
+  if (screen !== 'lobby') { setScreen('lobby'); stopArmed = false; lobbyAnimals = []; }
   const url = l.joinUrl || '';
+  const left = Math.max(0, l.rerollsLeft | 0);
   const seats = [0, 1, 2, 3].map((i) => {
     const m = l.members[i];
     if (!m) return '<li class="cpu"><span class="av">?</span><span class="nm">Computer<small>open seat</small></span></li>';
     const tags = [m.host && 'host', m.you && 'you', !m.connected && 'offline'].filter(Boolean).join(' · ');
     const initial = [...String(m.name || '?')][0].toUpperCase(); // whole code point (emoji names)
-    return `<li class="${m.connected ? '' : 'off'}"><span class="av">${esc(initial)}</span><span class="nm">${esc(m.name)}${tags ? `<small>${tags}</small>` : ''}</span></li>`;
+    const has = isAnimal(m.animal);
+    const pop = has && isAnimal(lobbyAnimals[i]) && lobbyAnimals[i] !== m.animal ? ' pop' : '';
+    const av = has ? `<span class="av mav${pop}" title="${esc(ANIMAL_NAMES[m.animal] || '')}">${animalSVG(m.animal)}</span>` : `<span class="av">${esc(initial)}</span>`;
+    if (m.you && has && l.rerollsLeft != null) {
+      // your seat: a bigger mascot; tap it for another one (a few times per lobby)
+      return `<li class="me${m.connected ? '' : ' off'}"><button class="reroll" id="reroll"${left ? '' : ' disabled'}
+        aria-label="Your mascot: ${esc(ANIMAL_NAMES[m.animal] || '')}. ${left ? `Reroll, ${left} left` : 'No rerolls left'}">${av}<span class="nm">${esc(m.name)}<small>${left ? `🎲 Reroll (${left}<span class="lw"> left</span>)` : 'no rerolls left'}</small></span></button></li>`;
+    }
+    return `<li class="${m.connected ? '' : 'off'}">${av}<span class="nm">${esc(m.name)}${tags ? `<small>${tags}</small>` : ''}</span></li>`;
   }).join('');
+  lobbyAnimals = [0, 1, 2, 3].map((i) => (l.members[i] ? l.members[i].animal : null));
   const others = l.mode === 'lan' ? (l.lanUrls || []).filter((u) => u !== url) : [];
   const n = l.members.length;
   // a localhost link is useless to friends: say so instead of showing a QR for it
@@ -508,6 +521,13 @@ function showLobby(l) {
     $('copy').onclick = () => copyText(url, linkEl);
   }
   $('leave').onclick = leave;
+  const rr = $('reroll');
+  if (rr) rr.onclick = () => {
+    if (!session || !session.reroll) return;
+    rr.disabled = true; // until the new mascot arrives (re-enabled if the host never answers)
+    session.reroll();
+    setTimeout(() => { if (rr.isConnected && left > 0) rr.disabled = false; }, 2000);
+  };
   if (l.isHost) {
     $('len').onclick = (e) => { const b = e.target.closest('[data-len]'); if (b && session) session.setSettings({ length: +b.dataset.len }); };
     $('start').onclick = (e) => {

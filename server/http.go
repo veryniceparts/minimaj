@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -117,8 +118,10 @@ func (s *Server) send(id, text string) {
 	case c.out <- text:
 	default:
 		// The client is not keeping up: drop it; it reconnects and resyncs.
+		// Not closeConn: the room did not ask for this, so it must hear that
+		// the connection closed (handleWS reports it once the socket is gone).
 		s.loop.Logf("conn %s: send buffer full, closing", id)
-		s.closeConn(id)
+		c.shut()
 	}
 }
 
@@ -187,6 +190,21 @@ func isLoopback(r *http.Request) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// hostRights: the request comes from this device and names us by address
+// ("localhost" or an IP literal). A DNS-rebinding page (evil.example resolving
+// to 127.0.0.1) passes the loopback and same-origin checks, but not this one.
+func hostRights(r *http.Request) bool {
+	if !isLoopback(r) {
+		return false
+	}
+	h := r.Host
+	if hh, _, err := net.SplitHostPort(h); err == nil {
+		h = hh
+	}
+	h = strings.TrimSuffix(strings.TrimPrefix(h, "["), "]")
+	return strings.EqualFold(h, "localhost") || net.ParseIP(h) != nil
 }
 
 // sameOrigin rejects cross-site requests (a page elsewhere POSTing to us).
@@ -259,13 +277,13 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"version": s.version,
 		"port":    s.port,
 		"lanUrls": s.currentLANURLs(), // re-read: Wi-Fi may have connected since startup
-		"hostOk":  isLoopback(r),
+		"hostOk":  hostRights(r),
 		"table":   s.roomSummary(),
 	})
 }
 
 func (s *Server) handleQuit(w http.ResponseWriter, r *http.Request) {
-	if !isLoopback(r) || !sameOrigin(r) {
+	if !hostRights(r) || !sameOrigin(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -288,7 +306,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.conns[id] = wc
 	s.mu.Unlock()
-	hostOk := isLoopback(r)
+	hostOk := hostRights(r)
 	s.loop.Submit(func(*goja.Runtime) {
 		if err := s.loop.call("__roomOpen", id, hostOk); err != nil {
 			s.loop.reportErr(err)
@@ -330,7 +348,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	// reader
+	readerDone := make(chan struct{})
 	go func() {
+		defer close(readerDone)
 		defer wc.shut()
 		for {
 			typ, data, err := c.Read(ctx)
@@ -342,6 +362,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			}
 			text := string(data)
 			s.loop.Submit(func(*goja.Runtime) {
+				// The room already closed this connection: a late message would
+				// re-open it there as a stranger (and could re-bind a seat).
+				if wc.closedByJS.Load() {
+					return
+				}
 				if err := s.loop.call("__roomMessage", id, text); err != nil {
 					s.loop.reportErr(err)
 				}
@@ -352,6 +377,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	<-writerDone
 	c.Close(websocket.StatusNormalClosure, "")
 	cancel()
+	// every message the reader queued must reach the room before "closed" does
+	<-readerDone
 	s.mu.Lock()
 	delete(s.conns, id)
 	s.mu.Unlock()
