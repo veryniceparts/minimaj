@@ -125,7 +125,10 @@ function setupFullscreen() {
   const d = document, el = d.documentElement;
   const supported = (d.fullscreenEnabled || d.webkitFullscreenEnabled) && (el.requestFullscreen || el.webkitRequestFullscreen);
   const inAndroidApp = /; wv\)/.test(navigator.userAgent);
-  if (!btn || !supported || inAndroidApp) return;
+  // launched from the Home Screen (installed web app): already full screen
+  const installed = navigator.standalone === true
+    || (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches);
+  if (!btn || !supported || inAndroidApp || installed) return;
   const isFs = () => !!(d.fullscreenElement || d.webkitFullscreenElement);
   const sync = () => {
     const on = isFs();
