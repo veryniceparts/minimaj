@@ -326,24 +326,25 @@ function showHome(err) {
       ${own ? '' : '<span class="pill-note">Joining a friend\'s table</span>'}</div>
       <div class="c2">${nameField}
       <button id="join" class="act hot wide">${own ? 'Host a table' : 'Join table'}</button>
-      ${own ? '<button id="online" class="act ghost wide">Online room — friends far away</button>' : ''}
+      ${own ? `<label class="tick"><input type="checkbox" id="local"><span>Local — same Wi-Fi only</span></label>` : ''}
       ${errHTML}</div>
-      ${own ? `<div class="c3"><div class="or">or join a friend's table</div>
+      ${own ? `<div class="c3"><div class="or">or join a friend</div>
       <ul class="nearby" id="nearby"><li class="muted small" id="scanmsg">Looking for tables nearby…</li></ul>
       <div class="joinrow">
-        <input id="tcode" placeholder="Table code or address" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="Table code or address">
+        <input id="tcode" placeholder="Room or table code" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="Online room code, or a local table code or address">
         <button id="joint" class="act">Join</button>
       </div></div>` : ''}
       ${howTo()}
     </div>`;
     const nameEl = $('name');
-    const go = () => connect({ mode: 'lan', name: getName(nameEl), info });
+    // Host: an online room by default (friends anywhere); ticked "Local" = this
+    // device's Wi-Fi table (the app's server).
+    const go = () => (own && !$('local').checked
+      ? connect({ mode: 'online', name: getName(nameEl), create: true, publicUrl: PUBLIC_URL })
+      : connect({ mode: 'lan', name: getName(nameEl), info }));
     $('join').onclick = go;
     nameEl.onkeydown = (e) => { if (e.key === 'Enter') go(); };
-    if (own) {
-      setupJoinFriend(nameEl);
-      $('online').onclick = () => { getName(nameEl); showOnline(); };
-    }
+    if (own) setupJoinFriend(nameEl);
     autoFocus(nameEl);
     return;
   }
@@ -403,7 +404,9 @@ function showOnline(err) {
     // an address (web version only) is left as typed; codes are cleaned up
     if (inApp) codeEl.value = net.normCode(v);
     else if (!/[.:/]/.test(v)) codeEl.value = v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    highlightJoin(codeEl, $('joinc'), $('create'));
   };
+  highlightJoin(codeEl, $('joinc'), $('create')); // e.g. a code from an invite link
   autoFocus(code && !nameEl.value ? nameEl : code ? $('joinc') : nameEl);
 }
 
@@ -419,15 +422,36 @@ function goToTable(url, nameEl) {
 const scan = { busy: false, at: 0, found: [] };
 const RESCAN_MS = 20000;
 
+// With a code typed in (or prefilled from an invite link), Join becomes the
+// highlighted button and the host/create button turns plain.
+function highlightJoin(codeEl, joinBtn, hostBtn) {
+  const on = codeEl.value.trim() !== '';
+  joinBtn.classList.toggle('hot', on);
+  hostBtn.classList.toggle('hot', !on);
+  hostBtn.classList.toggle('ghost', on);
+}
+
 function setupJoinFriend(nameEl) {
   const codeEl = $('tcode');
   const join = () => {
-    const url = parseTableInput(codeEl.value);
-    if (!url) { codeEl.focus(); toast('Enter the table code shown in your friend\'s lobby (like AAJZ)'); return; }
+    const raw = codeEl.value.trim();
+    const compact = raw.replace(/[\s-]/g, '');
+    // 5 characters = an online room code; 4/6 characters or an address = a local table
+    if (/^[a-z0-9]{5}$/i.test(compact)) {
+      const c = net.normCode(compact);
+      const problem = net.codeProblem ? net.codeProblem(c) : null;
+      if (problem) { codeEl.focus(); toast(problem); return; }
+      connect({ mode: 'online', name: getName(nameEl), code: c, publicUrl: PUBLIC_URL });
+      return;
+    }
+    const url = parseTableInput(raw);
+    if (!url) { codeEl.focus(); toast('Enter the room code (5 letters) or the table code shown in your friend\'s lobby'); return; }
     goToTable(url, nameEl);
   };
   $('joint').onclick = join;
   codeEl.onkeydown = (e) => { if (e.key === 'Enter') join(); };
+  codeEl.oninput = () => highlightJoin(codeEl, $('joint'), $('join'));
+  highlightJoin(codeEl, $('joint'), $('join'));
   const fresh = scan.busy || Date.now() - scan.at < RESCAN_MS;
   if (!fresh) scan.busy = true;
   renderNearby();
@@ -518,8 +542,7 @@ function sessionHandlers(token, opts) {
       if (!fatal) { toast(msg); return; }
       sessionToken = null;
       auto.clear();
-      if (info && opts.mode === 'online') showOnline(msg); // app: stay on the online screen
-      else showHome(msg);
+      showHome(msg); // the app's home hosts/joins online rooms too
     },
     onStatus: (text) => { if (live() && text) toast(text); },
     onEmote: (ev) => { if (live()) showEmote(ev); },

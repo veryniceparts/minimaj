@@ -327,6 +327,10 @@ button { touch-action: manipulation; }
 /* join a friend's table (app home) */
 .nearby { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
 .nearby li.muted { text-align: center; padding: 2px 0; }
+/* "Local — same Wi-Fi only" tick under Host a table (app home) */
+.card label.tick { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 8px 0 0; font-size: 13px; color: var(--muted); cursor: pointer; }
+.card label.tick input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); flex: none; }
+.card label.tick input:checked + span { color: var(--text); }
 .nearby .act { width: 100%; justify-content: space-between; padding: 8px 12px; text-align: left; }
 .nearby .nm { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .nearby .nm small { font-weight: 500; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
