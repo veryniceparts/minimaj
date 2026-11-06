@@ -23,8 +23,9 @@ export function createSession(opts, h) {
   const pinned = pin.length === 4 && pin.every((x) => Number.isInteger(x) && x >= 0 && x < ANIMAL_COUNT) ? pin : null;
   let animal = pinned ? pinned[0] : pickAnimals(1)[0];
   let rerolls = 0;
+  let afk = false;
   const lobby = () => ({
-    members: [{ name: opts.name, host: true, you: true, connected: true, animal }],
+    members: [{ name: opts.name, host: true, you: true, connected: true, animal, afk }],
     rerollsLeft: MAX_REROLLS - rerolls, maxRerolls: MAX_REROLLS,
     settings, isHost: true, max: 4, mode: opts.mode, code: opts.mode === 'online' ? 'FAKE5' : null,
     joinUrl: opts.mode === 'online' ? `${location.origin}${location.pathname}#FAKE5` : 'http://192.168.1.23:7777',
@@ -78,7 +79,11 @@ export function createSession(opts, h) {
   setTimeout(() => { if (!closed) { h.onConn('open'); h.onLobby(lobby()); } }, 50);
   return {
     mode: opts.mode, cid: 'fake', isHost: true,
-    act: (a) => game && game.act(0, a),
+    act(a) {
+      if (!game) return;
+      if (afk) this.afk(false);
+      game.act(0, a);
+    },
     start() {
       if (closed || game) return; // like the room: a second Start is ignored
       const names = ['Momo', 'Yuzu', 'Kiwi'];
@@ -92,11 +97,22 @@ export function createSession(opts, h) {
         const deal = g.startRound.bind(g);
         g.startRound = () => { deal(); g.live.splice(0, Math.max(0, g.live.length - WALL)); };
       }
+      if (afk) g.setKind(0, 'bot', null, 'afk');
+      // ?gone=2: that computer seat shows as a disconnected friend (screenshots)
+      if (+q.get('gone') >= 1 && +q.get('gone') <= 3) g.players[+q.get('gone')].away = 'gone';
+      if (+q.get('sleep') >= 1 && +q.get('sleep') <= 3) g.players[+q.get('sleep')].away = 'afk';
       g.start();
     },
     setSettings(s) { if (closed) return; settings = { ...settings, ...s }; h.onLobby(lobby()); },
     backToLobby() { if (closed) return; stop(); rerolls = 0; h.onLobby(lobby()); },
     emote: (e) => emit(game ? 0 : -1, e),
+    afk(on) {
+      if (closed) return false;
+      afk = !!on;
+      if (game) game.setKind(0, afk ? 'bot' : 'human', afk ? null : opts.name, afk ? 'afk' : null);
+      else h.onLobby(lobby());
+      return true;
+    },
     reroll() {
       if (closed || game) return;
       if (rerolls >= MAX_REROLLS) { h.onError('No rerolls left', false); return; }

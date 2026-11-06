@@ -430,6 +430,39 @@ export function runRoomTests() {
     r.room.destroy();
   });
 
+  t('away: a dropped friend shows as gone; a long press puts you to sleep and a computer plays', () => {
+    const r = mk({ botDelay: 100000 });
+    r.join('a', 'A', 'ca', true);
+    r.join('b', 'B', 'cb');
+    // lobby: asleep is shown to everyone; junk and strangers are ignored
+    r.msg('b', { t: 'afk', on: true });
+    assert.equal(r.last('a', 'lobby').lobby.members[1].afk, true);
+    r.msg('b', { t: 'afk', on: 'yes' });
+    assert.equal(r.last('a', 'lobby').lobby.members[1].afk, false);
+    r.room.open('x', {}); r.msg('x', { t: 'afk', on: true });
+    assert.ok(!r.out.x);
+    // asleep at the start: the computer plays that seat from the first hand
+    r.msg('b', { t: 'afk', on: true });
+    r.msg('a', { t: 'lobby-cmd', cmd: 'start' });
+    const seatB = r.last('b', 'view').view.seat;
+    const pb = () => r.last('a', 'view').view.players[seatB];
+    assert.deepEqual([pb().kind, pb().away], ['bot', 'afk']);
+    // a tap wakes it
+    r.msg('b', { t: 'afk', on: false });
+    assert.deepEqual([pb().kind, pb().away, pb().name], ['human', null, 'B']);
+    // asleep again, then playing a tile wakes it too
+    r.msg('b', { t: 'afk', on: true });
+    assert.equal(pb().away, 'afk');
+    r.msg('b', { t: 'act', a: { type: 'pass' } });
+    assert.deepEqual([pb().kind, pb().away], ['human', null]);
+    // dropping out: gone (a computer plays); back: human again
+    r.room.closed('b'); clock.drain();
+    assert.deepEqual([pb().kind, pb().away], ['bot', 'gone']);
+    r.join('b2', 'B', 'cb');
+    assert.deepEqual([pb().kind, pb().away], ['human', null]);
+    r.room.destroy();
+  });
+
   t('emoteAllowed: gap and burst', () => {
     const times = [];
     assert.equal(emoteAllowed(times, 0), true);

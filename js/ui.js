@@ -243,6 +243,26 @@ export const EMOTE_TEXT = { go: 'He he, let\'s go!', hurray: 'Hurray!', sad: 'Aw
 const EMOTE_MS = 1800;
 const SWIPE_MIN = 24; // px along the dominant axis
 const TAP_MAX = 12; // px: a press that moved less is a tap
+const LONG_MS = 600; // a press held this long (without moving) is a long press: 'afk'
+
+/* Away mascots. A friend who lost their connection hides behind two tile backs
+   (.gone: only the top of the head peeks out); a long press on your own mascot puts it
+   to sleep (.afk: eyes shut, slow breathing, floating z's) and the computer plays your
+   seat until a tap wakes it. Both come from view.players[i].away (lobby: members[i].afk). */
+const AWAY_FX = { gone: '<span class="hide" aria-hidden="true"><i></i><i></i></span>', afk: '<span class="zz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>' };
+// set a mascot box's away state ('gone' | 'afk' | null): classes plus the extra markup
+export function setAway(el, away) {
+  if (!el || (el._away || null) === (away || null)) return;
+  el._away = away || null;
+  for (const x of el.querySelectorAll('.hide, .zz')) x.remove();
+  el.classList.remove('gone', 'afk');
+  if (!el._away || !AWAY_FX[el._away]) return;
+  if (el._emo) { clearTimeout(el._emoT); el.classList.remove('emo', 'emo-' + el._emo); for (const x of el.querySelectorAll('.emo-fx, .bub')) x.remove(); el._emo = null; }
+  el.classList.remove('idle');
+  el.classList.add(el._away);
+  el.insertAdjacentHTML('beforeend', AWAY_FX[el._away]);
+}
+export const awayFX = (away) => AWAY_FX[away] || '';
 const STAR = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0Q5.6 4.4 10 5Q5.6 5.6 5 10Q4.4 5.6 0 5Q4.4 4.4 5 0Z"/></svg>';
 const HEART = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 9C1.6 6.6 0 5 0 3.1 0 1.4 1.3.3 2.7.3 3.7.3 4.5.9 5 1.7 5.5.9 6.3.3 7.3.3 8.7.3 10 1.4 10 3.1 10 5 8.4 6.6 5 9Z"/></svg>';
 const PAW = '<svg viewBox="0 0 20 20" aria-hidden="true"><ellipse cx="10" cy="13" rx="5.2" ry="4.4"/><circle cx="4" cy="7.6" r="2.1"/><circle cx="8" cy="4.6" r="2.2"/><circle cx="12.4" cy="4.6" r="2.2"/><circle cx="16.2" cy="7.6" r="2.1"/></svg>';
@@ -265,7 +285,7 @@ export function emoteHTML(kind, text = EMOTE_TEXT[kind]) {
 // Show an emote on a mascot box (.ani on the table, .mav in the lobby) for EMOTE_MS:
 // classes .emo .emo-<kind> drive the face and moves, plus effects and a bubble.
 export function playEmoteOn(el, kind, text) {
-  if (!el || !el.firstChild || !EMOTE_TEXT[kind]) return;
+  if (!el || !el.firstChild || !EMOTE_TEXT[kind] || el.classList.contains('afk') || el.classList.contains('gone')) return;
   clearTimeout(el._emoT);
   for (const x of el.querySelectorAll('.emo-fx, .bub')) x.remove();
   el.classList.remove('emo');
@@ -294,16 +314,24 @@ export function emoteGestures(el, onKind, signal) {
   el.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault(); // no text selection or native drag
-    g = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    clearTimeout(g && g.t);
+    const p = { id: e.pointerId, x: e.clientX, y: e.clientY, long: false };
+    p.t = setTimeout(() => { if (g === p) { p.long = true; onKind('afk', e); } }, LONG_MS);
+    g = p;
     try { el.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+  }, { signal });
+  el.addEventListener('pointermove', (e) => {
+    if (g && e.pointerId === g.id && Math.max(Math.abs(e.clientX - g.x), Math.abs(e.clientY - g.y)) >= TAP_MAX) clearTimeout(g.t);
   }, { signal });
   el.addEventListener('pointerup', (e) => {
     if (!g || e.pointerId !== g.id) return;
-    const kind = gestureEmote(e.clientX - g.x, e.clientY - g.y);
+    clearTimeout(g.t);
+    const kind = g.long ? null : gestureEmote(e.clientX - g.x, e.clientY - g.y);
     g = null;
     if (kind) onKind(kind, e);
   }, { signal });
-  el.addEventListener('pointercancel', (e) => { if (g && e.pointerId === g.id) g = null; }, { signal });
+  el.addEventListener('pointercancel', (e) => { if (g && e.pointerId === g.id) { clearTimeout(g.t); g = null; } }, { signal });
+  signal && signal.addEventListener('abort', () => { if (g) clearTimeout(g.t); g = null; });
   el.addEventListener('contextmenu', (e) => e.preventDefault(), { signal }); // long press
 }
 
@@ -461,7 +489,7 @@ export class Table {
     clearTimeout(this.idleTimer);
     if (this.off.signal.aborted) return;
     this.idleTimer = setTimeout(() => {
-      if (!reduceMotion.matches && !document.hidden && !this.anis[0]._emo) {
+      if (!reduceMotion.matches && !document.hidden && !this.anis[0]._emo && !this.anis[0]._away) {
         const moves = animalMoves(this.anis[0]._k);
         this.animalMove(moves[Math.floor(Math.random() * moves.length)]);
       }
@@ -623,6 +651,8 @@ export class Table {
     clearTimeout(el._emoT);
     if (el._emo) el.classList.remove('emo', 'emo-' + el._emo);
     el._emo = null;
+    el._away = null;
+    el.classList.remove('gone', 'afk');
     el.innerHTML = p.animal == null ? '' : animalSVG(p.animal);
     el.title = p.animal == null ? '' : ANIMAL_NAMES[p.animal % ANIMAL_NAMES.length];
   }
@@ -738,12 +768,13 @@ export class Table {
     const L = this.layers[r];
     const wind = (s - v.dealer + 4) % 4;
     const isTurn = (v.phase === 'discard' && v.turn === s) || (v.claimTile && v.claimTile.from === s);
-    setCls(L.info, `info${isTurn ? ' turn' : ''}${wind === 0 ? ' dealer' : ''}${p.kind === 'bot' ? ' bot' : ''}`);
+    setCls(L.info, `info${isTurn ? ' turn' : ''}${wind === 0 ? ' dealer' : ''}${p.away ? ` away-${p.away}` : p.kind === 'bot' ? ' bot' : ''}`);
     setText(L.wind, WIND_CHARS[wind]);
     setText(L.score, p.score);
     if (L.stick.hidden === !!p.riichi) L.stick.hidden = !p.riichi;
     setText(L.pname, p.name);
     this.patchAnimal(r, p);
+    setAway(this.anis[r], p.away === 'gone' || p.away === 'afk' ? p.away : null);
 
     const hl = v.claimTile ? v.claimTile.from === s : v.lastDiscard && v.lastDiscard.seat === s;
     const list = [];

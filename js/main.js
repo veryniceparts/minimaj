@@ -1,4 +1,4 @@
-import { Table, tileHTML, roundName, playEmoteOn, emoteGestures } from './ui.js';
+import { Table, tileHTML, roundName, playEmoteOn, emoteGestures, awayFX } from './ui.js';
 import { codeForUrl, parseTableInput, scanTables } from './lan.js';
 import { animalSVG, ANIMAL_NAMES } from './animals.js';
 
@@ -564,6 +564,9 @@ function sessionHandlers(token, opts) {
 // is then skipped (Table.emote / lobbyMine). When the session can't send it (offline,
 // too soon after the last one) it still plays here, unless one is showing already.
 function myEmote(kind) {
+  // a long press puts your mascot to sleep (or wakes it); any gesture while asleep wakes it
+  const asleep = amAsleep();
+  if (kind === 'afk' || asleep) { setAfk(!asleep); return; }
   const sentOk = !!(session && session.emote && session.emote(kind));
   if (screen === 'game' && table && view) {
     if (sentOk) table.emote(view.seat, kind, true);
@@ -575,6 +578,18 @@ function myEmote(kind) {
   }
 }
 
+// asleep (afk): the computer plays your seat until you wake up
+function amAsleep() {
+  if (screen === 'game' && view && view.players && view.players[view.seat]) return view.players[view.seat].away === 'afk';
+  return screen === 'lobby' && lobbyAfk;
+}
+function setAfk(on) {
+  if (!session || !session.afk || !session.afk(on)) { toast('Not connected right now'); return; }
+  if (on) toast(screen === 'game' ? 'Zzz… the computer plays for you. Tap your mascot to wake up.' : 'Zzz… tap your mascot to wake up.', 3600);
+  else toast('Welcome back!', 1600);
+}
+
+let lobbyAfk = false; // you are asleep in the lobby
 let lobbyMine = []; // your lobby emotes already shown: [{ kind, at }]
 let lobbyYou = -1; // your index in lobby.members
 const lobbyMav = (i) => { const li = i >= 0 ? app.querySelectorAll('.seats li')[i] : null; return li ? li.querySelector('.mav') : null; };
@@ -613,20 +628,23 @@ function showLobby(l) {
   const seats = [0, 1, 2, 3].map((i) => {
     const m = l.members[i];
     if (!m) return '<li class="cpu"><span class="av">?</span><span class="nm">Computer<small>open seat</small></span></li>';
-    const tags = [m.host && 'host', m.you && 'you', !m.connected && 'offline'].filter(Boolean).join(' · ');
+    const tags = [m.host && 'host', m.you && 'you', !m.connected && 'offline', m.afk && 'asleep'].filter(Boolean).join(' · ');
     const initial = [...String(m.name || '?')][0].toUpperCase(); // whole code point (emoji names)
     const has = isAnimal(m.animal);
     const pop = has && isAnimal(lobbyAnimals[i]) && lobbyAnimals[i] !== m.animal ? ' pop' : '';
-    const av = has ? `<span class="av mav${pop}" title="${esc(ANIMAL_NAMES[m.animal] || '')}">${animalSVG(m.animal)}</span>` : `<span class="av">${esc(initial)}</span>`;
+    const av = has ? `<span class="av mav${pop}${m.afk ? ' afk' : ''}" title="${esc(ANIMAL_NAMES[m.animal] || '')}">${animalSVG(m.animal)}${m.afk ? awayFX('afk') : ''}</span>` : `<span class="av">${esc(initial)}</span>`;
     if (m.you && has && l.rerollsLeft != null) {
-      // your seat: a bigger mascot; tap it for another one (a few times per lobby)
-      return `<li class="me${m.connected ? '' : ' off'}"><button class="reroll" id="reroll"${left ? '' : ' disabled'}
-        aria-label="Your mascot: ${esc(ANIMAL_NAMES[m.animal] || '')}. ${left ? `Reroll, ${left} left` : 'No rerolls left'}">${av}<span class="nm">${esc(m.name)}<small>${left ? `🎲 Reroll (${left}<span class="lw"> left</span>)` : 'no rerolls left'}</small></span></button></li>`;
+      // your seat: a bigger mascot; tap it for another one (a few times per lobby),
+      // hold it to fall asleep. Not [disabled] when out of rerolls: it still takes gestures.
+      const note = m.afk ? 'asleep · tap to wake' : left ? `🎲 Reroll (${left}<span class="lw"> left</span>)` : 'no rerolls left';
+      return `<li class="me${m.connected ? '' : ' off'}"><button class="reroll${left || m.afk ? '' : ' spent'}" id="reroll"
+        aria-label="Your mascot: ${esc(ANIMAL_NAMES[m.animal] || '')}. ${m.afk ? 'Asleep, tap to wake up' : left ? `Reroll, ${left} left` : 'No rerolls left'}">${av}<span class="nm">${esc(m.name)}<small>${note}</small></span></button></li>`;
     }
     return `<li class="${m.connected ? '' : 'off'}">${av}<span class="nm">${esc(m.name)}${tags ? `<small>${tags}</small>` : ''}</span></li>`;
   }).join('');
   lobbyAnimals = [0, 1, 2, 3].map((i) => (l.members[i] ? l.members[i].animal : null));
   lobbyYou = l.members.findIndex((m) => m.you);
+  lobbyAfk = !!(l.members[lobbyYou] && l.members[lobbyYou].afk);
   const others = l.mode === 'lan' ? (l.lanUrls || []).filter((u) => u !== url) : [];
   const n = l.members.length;
   // a localhost link is useless to friends: say so instead of showing a QR for it
@@ -667,14 +685,14 @@ function showLobby(l) {
   const myMav = rr && rr.querySelector('.mav');
   if (myMav) {
     emoteGestures(myMav, (kind) => {
-      if (kind === 'go') return;
+      if (kind === 'go' && !lobbyAfk) return;
       rr._swiped = Date.now();
       myEmote(kind);
     });
   }
   if (rr) rr.onclick = () => {
     if (rr._swiped && Date.now() - rr._swiped < 800) { rr._swiped = 0; return; } // that was a swipe
-    if (!session || !session.reroll) return;
+    if (!session || !session.reroll || !left || lobbyAfk || rr.disabled) return;
     rr.disabled = true; // until the new mascot arrives (re-enabled if the host never answers)
     session.reroll();
     setTimeout(() => { if (rr.isConnected && left > 0) rr.disabled = false; }, 2000);

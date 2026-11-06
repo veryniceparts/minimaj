@@ -52,8 +52,11 @@ export class Game {
 
   start() { this.startRound(); this.changed(); }
 
-  setKind(seat, kind, name) {
+  // away: why a human's seat is played by the computer: 'gone' (disconnected) or
+  // 'afk' (asleep: a long press on their mascot); null when they play themselves
+  setKind(seat, kind, name, away = null) {
     this.players[seat].kind = kind;
+    this.players[seat].away = away;
     if (name) this.players[seat].name = name;
     // a human who leaves the result screen must not hold up the others' "Next hand"
     if (this.phase === 'end') this.tryAdvance();
@@ -635,7 +638,7 @@ export class Game {
       wall: this.live ? this.live.length : 0,
       dora: this.dead ? this.doraIndicators() : [],
       players: this.players.map((p) => ({
-        name: p.name, kind: p.kind, score: p.score, animal: p.animal,
+        name: p.name, kind: p.kind, away: p.away || null, score: p.score, animal: p.animal,
         riichi: p.riichi || p.riichiPending,
         melds: p.melds, discards: p.discards, handCount: p.hand ? p.hand.length : 0,
       })),
