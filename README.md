@@ -13,8 +13,10 @@ There are two ways to play:
   room** and send the 5-letter code or link. Players connect peer-to-peer over
   WebRTC. The public PeerJS server is only used to set up the connection.
 
-If someone drops out, a computer takes over their seat. They get it back by
-opening the link again, or just by reloading the page.
+If someone drops out, a computer takes over their seat and their mascot hides
+behind two tiles. They get it back by opening the link again, or just by
+reloading the page. Long-press your own mascot to go away for a bit: it falls
+asleep and the computer plays for you until you tap it again.
 
 ## Download
 
