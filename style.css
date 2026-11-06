@@ -321,17 +321,11 @@ button { touch-action: manipulation; }
 #code { text-transform: uppercase; letter-spacing: .3em; font-weight: 800; text-align: center; font-family: var(--round); }
 .pill-note { display: inline-block; background: rgba(var(--ok-rgb), .12); color: var(--ok); padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .code { font: 800 40px/1 var(--round); letter-spacing: .2em; text-align: center; margin: 6px 0 4px; color: var(--accent); }
-/* room code + a small copy button beside it (online lobby) */
-.coderow { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.coderow .code { margin-right: -.2em; } /* letter-spacing leaves a gap after the last letter */
-.copycode {
-  flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer;
-  display: grid; place-items: center; background: var(--bg-2); color: var(--muted);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-.copycode:hover, .copycode:focus-visible { color: var(--text); }
-.copycode:active { transform: scale(.94); }
-.copycode svg { width: 17px; height: 17px; }
+/* tap the room code / invite link to copy it */
+button.code.tapcopy { display: block; width: 100%; background: none; border: 0; padding: 0 0 0 .2em; cursor: pointer; border-radius: 12px; -webkit-tap-highlight-color: transparent; transition: transform .12s; }
+button.code.tapcopy:hover { filter: brightness(1.1); }
+button.code.tapcopy:active { transform: scale(.96); }
+#link.tapcopy { display: block; width: 100%; cursor: pointer; }
 .qr { display: grid; place-items: center; margin: 14px auto 12px; width: min(200px, 64vw); aspect-ratio: 1; padding: 10px; background: var(--tile); border-radius: 18px; box-shadow: 0 0 0 4px rgba(var(--back-rgb), .25); }
 .qr svg { width: 100%; height: 100%; display: block; }
 .urls { font-size: 12px; color: var(--muted); margin: 6px 0 0; word-break: break-all; }

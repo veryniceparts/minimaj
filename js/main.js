@@ -276,7 +276,9 @@ async function updateWakeLock() {
 }
 document.addEventListener('visibilitychange', updateWakeLock);
 
-const logo = () => `<h1 class="logo"><span class="tiles">${tileHTML(4 * 33)}${tileHTML(52)}${tileHTML(4 * 27)}</span>minimaj</h1>`;
+// three random tiles for the logo, picked once per page load
+const LOGO_TILES = (() => { const ids = new Set(); while (ids.size < 3) ids.add(Math.floor(Math.random() * 136)); return [...ids]; })();
+const logo = () => `<h1 class="logo"><span class="tiles">${LOGO_TILES.map((t) => tileHTML(t)).join('')}</span>minimaj</h1>`;
 
 function endSession() {
   const s = session;
@@ -633,12 +635,12 @@ function showLobby(l) {
   const len = (l.settings && l.settings.length) || 1;
   app.innerHTML = `<div class="card lobby"><div class="c1">
     ${logo()}
-    ${l.mode === 'online' && l.code ? `<div class="muted small" style="text-align:center">Room code</div><div class="coderow"><div class="code">${esc(l.code)}</div><button class="copycode" id="copycode" aria-label="Copy room code" title="Copy room code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/></svg></button></div>`
+    ${l.mode === 'online' && l.code ? `<div class="muted small" style="text-align:center">Room code · tap to copy</div><button class="code tapcopy" id="copycode" aria-label="Room code ${esc(l.code)}, tap to copy">${esc(l.code)}</button>`
       : noLan ? `<p class="muted">No Wi-Fi network found, so friends can't join yet. Connect this device to Wi-Fi (or turn on its hotspot) and reopen this page — or just play against the computer.</p>`
       : `<p class="muted">Scan to join from a phone or tablet on the same Wi-Fi.</p>`}
     ${svg ? `<div class="qr">${svg}</div>` : ''}
     ${l.mode === 'lan' && !noLan && codeForUrl(url) ? `<div class="tablecode"><span class="muted small">Table code</span> <b>${esc(codeForUrl(url))}</b></div>` : ''}
-    ${url && !noLan ? `<div class="joinrow"><input readonly value="${esc(url)}" id="link" aria-label="Invite link"><button class="act" id="copy">Copy</button></div>` : ''}
+    ${url && !noLan ? `<input readonly value="${esc(url)}" id="link" class="tapcopy" title="Tap to copy the invite link" aria-label="Invite link, tap to copy">` : ''}
     ${others.length ? `<p class="urls">Also: ${others.map(esc).join(' · ')}</p>` : ''}</div>
     <div class="c2"><ul class="seats">${seats}</ul>
     ${l.isHost ? `
@@ -654,11 +656,11 @@ function showLobby(l) {
   </div>`;
   if (url && !noLan) {
     const linkEl = $('link');
-    linkEl.onfocus = () => linkEl.select();
-    $('copy').onclick = () => copyText(url, linkEl);
+    // tapping the link copies it
+    linkEl.onclick = () => copyText(url, linkEl);
   }
   const cc = $('copycode');
-  if (cc) cc.onclick = () => copyText(l.code, null, 'Room code');
+  if (cc) cc.onclick = () => copyText(l.code, null, 'Room code'); // tapping the code copies it
   $('leave').onclick = leave;
   const rr = $('reroll');
   // swipe your mascot to emote (a tap still rerolls)
