@@ -633,7 +633,7 @@ function showLobby(l) {
   const len = (l.settings && l.settings.length) || 1;
   app.innerHTML = `<div class="card lobby"><div class="c1">
     ${logo()}
-    ${l.mode === 'online' && l.code ? `<div class="muted small" style="text-align:center">Room code</div><div class="code">${esc(l.code)}</div>`
+    ${l.mode === 'online' && l.code ? `<div class="muted small" style="text-align:center">Room code</div><div class="coderow"><div class="code">${esc(l.code)}</div><button class="copycode" id="copycode" aria-label="Copy room code" title="Copy room code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/></svg></button></div>`
       : noLan ? `<p class="muted">No Wi-Fi network found, so friends can't join yet. Connect this device to Wi-Fi (or turn on its hotspot) and reopen this page — or just play against the computer.</p>`
       : `<p class="muted">Scan to join from a phone or tablet on the same Wi-Fi.</p>`}
     ${svg ? `<div class="qr">${svg}</div>` : ''}
@@ -657,6 +657,8 @@ function showLobby(l) {
     linkEl.onfocus = () => linkEl.select();
     $('copy').onclick = () => copyText(url, linkEl);
   }
+  const cc = $('copycode');
+  if (cc) cc.onclick = () => copyText(l.code, null, 'Room code');
   $('leave').onclick = leave;
   const rr = $('reroll');
   // swipe your mascot to emote (a tap still rerolls)
@@ -695,18 +697,30 @@ function showLobby(l) {
   };
 }
 
-async function copyText(text, input) {
+// Copy text; without the async clipboard (plain http) fall back to selecting it
+// in `input` (or a temporary off-screen field) and execCommand('copy').
+async function copyText(text, input, what = 'Link') {
   try {
     if (!navigator.clipboard || !window.isSecureContext) throw new Error('no clipboard');
     await navigator.clipboard.writeText(text);
-    toast('Link copied');
+    toast(`${what} copied`);
   } catch {
+    let tmp = null;
+    if (!input) {
+      tmp = document.createElement('textarea');
+      tmp.value = text;
+      tmp.setAttribute('readonly', '');
+      tmp.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(tmp);
+      input = tmp;
+    }
     input.focus();
     input.select();
     input.setSelectionRange(0, text.length);
     let ok = false;
     try { ok = document.execCommand('copy'); } catch { /* ignore */ }
-    toast(ok ? 'Link copied' : 'Link selected — copy it from the box');
+    if (tmp) tmp.remove();
+    toast(ok ? `${what} copied` : tmp ? `${what}: ${text}` : `${what} selected — copy it from the box`);
   }
 }
 
