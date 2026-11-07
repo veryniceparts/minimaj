@@ -575,6 +575,18 @@ function myEmote(kind) {
   }
 }
 
+// Your mascot sleeps when the table waited on you for 45 s (room.js): any touch or key
+// wakes it (the room also wakes you on any action).
+let wokeAt = 0;
+function wakeUp() {
+  if (screen !== 'game' || !view || !session || !session.wake) return;
+  const me = view.players && view.players[view.seat];
+  if (!me || !me.sleep || Date.now() - wokeAt < 2000) return;
+  wokeAt = Date.now();
+  session.wake();
+}
+for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, wakeUp, { capture: true, passive: true });
+
 let lobbyMine = []; // your lobby emotes already shown: [{ kind, at }]
 let lobbyYou = -1; // your index in lobby.members
 const lobbyMav = (i) => { const li = i >= 0 ? app.querySelectorAll('.seats li')[i] : null; return li ? li.querySelector('.mav') : null; };
@@ -754,6 +766,11 @@ function onGameClick(e) {
       return;
     }
     if (a.type === 'ui-leave') { leave(); return; }
+    if (a.type === 'vote-cpu') {
+      btn.disabled = true; // until the room's answer redraws the bar
+      if (session && session.voteCpu) session.voteCpu(a.seat);
+      return;
+    }
     act(a);
     return;
   }

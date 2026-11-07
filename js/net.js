@@ -586,6 +586,10 @@ export function createSession(opts, handlers) {
       send({ t: 'emote', e: kind });
       return true;
     },
+    // let the computer play a disconnected friend's seat (a majority of you decides)
+    voteCpu(seat) { send({ t: 'vote-cpu', seat }); },
+    // you touched the screen while your mascot sleeps
+    wake() { send({ t: 'wake' }); },
     close() { stop(); },
   };
 }

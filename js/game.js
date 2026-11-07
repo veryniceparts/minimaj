@@ -49,18 +49,40 @@ export class Game {
   roundWindType() { return 27 + this.round; }
   doraIndicators() { return this.dead.slice(0, this.doraCount); }
   isBot(s) { return this.players[s].kind === 'bot'; }
+  // a human who lost their connection and still holds the seat (no computer yet)
+  isGone(s) { return this.players[s].kind !== 'bot' && this.players[s].away === 'gone'; }
+  // a human playing right now: the table waits for them
+  isActive(s) { return !this.isBot(s) && !this.isGone(s); }
 
   start() { this.startRound(); this.changed(); }
 
-  // away: 'gone' when a human's seat is played by the computer because they
-  // disconnected; null otherwise
+  // away: 'gone' when the human of this seat lost their connection: with kind 'human'
+  // the table waits for them (their claims pass by themselves); kind 'bot' once the
+  // others voted for the computer to play. null when they play themselves.
   setKind(seat, kind, name, away = null) {
     this.players[seat].kind = kind;
     this.players[seat].away = away;
+    this.players[seat].sleep = false;
     if (name) this.players[seat].name = name;
     // a human who leaves the result screen must not hold up the others' "Next hand"
     if (this.phase === 'end') this.tryAdvance();
     this.changed();
+  }
+
+  // asleep: a human the table has waited on for a long time (room.js); only a mascot
+  setSleep(seat, on) {
+    if (!!this.players[seat].sleep === !!on) return;
+    this.players[seat].sleep = !!on;
+    this.changed();
+  }
+
+  // the humans the table is waiting on right now (not bots, not disconnected)
+  waitingOn() {
+    if (this.phase === 'discard') return this.isActive(this.turn) ? [this.turn] : [];
+    if (this.phase === 'claim' && this.claim) {
+      return Object.keys(this.claim.opts).map(Number).filter((s) => !this.claim.resp[s] && this.isActive(s));
+    }
+    return [];
   }
 
   announce(seat, text) {
@@ -516,9 +538,13 @@ export class Game {
     // all-last: a dealer who wins while in first place ends the game (agari-yame)
     const allLast = this.round === this.length - 1 && this.kyoku === 3;
     const dealerTop = allLast && renchan && !draw && this.standings()[0].seat === this.dealer;
-    const over = this.players.some((p) => p.score < 0) || round >= this.length || dealerTop;
+    const bust = this.players.some((p) => p.score < 0);
+    const over = bust || round >= this.length || dealerTop;
     this.pendingNext = { round, kyoku, honba };
+    this.result.next = over ? null : { round, kyoku, honba, renchan: !!renchan };
     this.result.gameOver = over;
+    // why it ended: someone went below zero, the dealer won all-last in first place, or the last hand was played
+    this.result.endReason = !over ? null : bust ? 'bust' : dealerTop ? 'agari-yame' : 'last';
     this.result.scores = this.players.map((p) => p.score);
     this.log.push({ round: this.round, kyoku: this.kyoku, honba: this.honba, type: this.result.type, winner: this.result.winner, deltas: this.result.deltas });
     this.ready = new Set();
@@ -527,7 +553,8 @@ export class Game {
 
   tryAdvance() {
     if (this.phase !== 'end') return;
-    const humans = this.players.map((p, i) => i).filter((i) => !this.isBot(i));
+    // disconnected humans don't hold up "Next hand"
+    const humans = this.players.map((p, i) => i).filter((i) => this.isActive(i));
     if (humans.some((i) => !this.ready.has(i))) return;
     if (!humans.length && !this.autoAdvance) {
       // all bots: advance after a delay (handled by scheduler)
@@ -589,6 +616,14 @@ export class Game {
       const s = this.turn;
       later(() => this.botAct(s), this.botDelay);
     } else if (this.phase === 'claim') {
+      // a disconnected human can't answer: their claims pass by themselves
+      const gone = Object.keys(this.claim.opts).map(Number).filter((s) => !this.claim.resp[s] && this.isGone(s));
+      if (gone.length) {
+        for (const s of gone) this.setClaimResponse(s, { type: 'pass' });
+        this.tryResolveClaim();
+        this.changed();
+        return;
+      }
       const pending = Object.keys(this.claim.opts).map(Number).filter((s) => !this.claim.resp[s] && this.isBot(s));
       if (pending.length) {
         later(() => {
@@ -602,7 +637,7 @@ export class Game {
         }, Math.min(this.botDelay, 300));
       }
     } else if (this.phase === 'end') {
-      const humans = this.players.some((p) => p.kind !== 'bot');
+      const humans = this.players.some((p, s) => this.isActive(s));
       if (!humans) later(() => { this.autoAdvance = true; this.advance(); this.changed(); }, this.botDelay * 4);
     }
   }
@@ -638,7 +673,7 @@ export class Game {
       wall: this.live ? this.live.length : 0,
       dora: this.dead ? this.doraIndicators() : [],
       players: this.players.map((p) => ({
-        name: p.name, kind: p.kind, away: p.away || null, score: p.score, animal: p.animal,
+        name: p.name, kind: p.kind, away: p.away || null, sleep: !!p.sleep, score: p.score, animal: p.animal,
         riichi: p.riichi || p.riichiPending,
         melds: p.melds, discards: p.discards, handCount: p.hand ? p.hand.length : 0,
       })),

@@ -125,9 +125,18 @@ export function actionsHTML(v, ui) {
     if (c.pon) out.push(b({ type: 'pon' }, 'Pon', 'call'));
     if (c.kan) out.push(b({ type: 'kan' }, 'Kan', 'call'));
     if (c.chi) {
+      // each choice shows the whole run it makes: your two tiles (the ones the meld
+      // would take: red fives first) plus the called tile, raised and outlined
       for (const pair of c.chi) {
-        const lbl = c.chi.length > 1 ? `Chi <span class="mini">${typeTile(tileType(pair[0]))}${typeTile(tileType(pair[1]))}</span>` : 'Chi';
-        out.push(b({ type: 'chi', tiles: pair }, lbl, 'call'));
+        const used = [];
+        const idOf = (t) => {
+          const id = (v.hand || []).filter((x) => tileType(x) === t && !used.includes(x)).sort((x, y) => isRed(y) - isRed(x))[0];
+          const out = id != null ? id : t * 4 + (t % 9 === 4 ? 1 : 0);
+          used.push(out);
+          return out;
+        };
+        const run = [[idOf(pair[0]), ''], [idOf(pair[1]), ''], [c.tile, 'got']].sort((x, y) => tileType(x[0]) - tileType(y[0]));
+        out.push(b({ type: 'chi', tiles: pair }, `Chi <span class="mini run">${run.map(([id, cls]) => tileHTML(id, cls)).join('')}</span>`, 'call chi'));
       }
     }
     out.push(b({ type: 'pass' }, 'Pass', 'ghost'));
@@ -140,9 +149,19 @@ export function actionsHTML(v, ui) {
     for (const t of o.kakan) out.push(b({ type: 'kakan', t }, `Kan <span class="mini">${typeTile(t)}</span>`, 'call'));
     hint = ui.riichiMode ? 'Riichi! Pick a tile to discard' : (v.riichiLocked ? 'Riichi — auto discard' : 'Your turn');
   } else if (v.phase === 'discard') {
-    hint = `<span><span class="who">${esc(v.players[v.turn].name)}</span>'s turn</span>`;
+    const off = v.players[v.turn].away === 'gone' && v.players[v.turn].kind !== 'bot';
+    hint = `<span><span class="who">${esc(v.players[v.turn].name)}</span>${off ? ' is offline · waiting…' : '\'s turn'}</span>`;
   } else if (v.phase === 'claim') {
     hint = 'Waiting for calls…';
+  }
+  // a friend lost their connection: the table waits; a majority can let the computer play
+  if (!v.claim && !v.options && (v.phase === 'discard' || v.phase === 'claim')) {
+    for (const x of v.votes || []) {
+      const nm = esc(v.players[x.seat].name);
+      out.push(x.mine
+        ? `<button class="act ghost" disabled>Voted · ${x.n}/${x.need}</button>`
+        : b({ type: 'vote-cpu', seat: x.seat }, `Let computer play ${nm}${x.need > 1 ? ` · ${x.n}/${x.need}` : ''}`, 'call vote'));
+    }
   }
   if (!v.options && v.waits && v.waits.length) {
     hint += `<span class="waits">${v.furiten ? '<em>furiten</em>' : 'waits'} ${v.waits.map((t) => typeTile(t)).join('')}</span>`;
@@ -170,11 +189,24 @@ const PEEK_BTN = '<button class="act ghost peekbtn" data-ui="close" title="Close
 
 const miniAnimal = (p) => (p && p.animal != null ? `<span class="ani">${animalSVG(p.animal)}</span>` : '');
 
+// One line under the scores: what comes next, or why the game is over.
+function nextLine(v, r) {
+  if (r.gameOver) {
+    const why = r.endReason === 'bust' ? `${esc(v.players[r.scores.findIndex((x) => x < 0)].name)} dropped below zero`
+      : r.endReason === 'agari-yame' ? 'the dealer won the last hand in first place (agari-yame)' : 'that was the last hand';
+    return `<p class="nextline">Game over: ${why}</p>`;
+  }
+  const n = r.next;
+  if (!n) return '';
+  const what = `${WIND_CHARS[n.round]}${n.kyoku + 1}局${n.honba ? ` · ${n.honba} honba` : ''}`;
+  return `<p class="nextline">Next: <b>${what}</b>${n.renchan ? ' · the dealer stays' : ''}</p>`;
+}
+
 export function resultHTML(v) {
   const r = v.result;
   if (v.phase === 'over') {
     const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td class="nm">${miniAnimal(v.players[f.seat])}${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
-    return `<div class="res over"><h2 class="big">Game over</h2><table class="scores final">${rows}</table>
+    return `<div class="res over"><h2 class="big">Game over</h2><table class="scores final">${rows}</table>${r ? nextLine(v, r) : ''}
       <div class="btns">${v.isHost
         ? '<button class="act hot wide" data-act=\'{"type":"ui-again"}\'>Play again</button><button class="act ghost wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>'
         : '<p class="muted wait">Waiting for the host to play again…</p>'}
@@ -199,7 +231,7 @@ export function resultHTML(v) {
   }
   const readyNames = v.ready.map((s) => esc(v.players[s].name));
   const iAmReady = v.ready.includes(v.seat);
-  return `<div class="res ${r.type === 'draw' ? 'draw' : 'win'}">${body}${deltasTable(v, r)}
+  return `<div class="res ${r.type === 'draw' ? 'draw' : 'win'}">${body}${deltasTable(v, r)}${nextLine(v, r)}
     <div class="gorow">${PEEK_BTN}${iAmReady ? `<p class="muted wait">Waiting for others…${readyNames.length ? ' (ready: ' + readyNames.join(', ') + ')' : ''}</p>`
     : `<button class="act hot wide go" data-act='{"type":"ready"}'>${r.gameOver ? 'See results' : 'Next hand'}</button>`}</div></div>`;
 }
@@ -254,21 +286,24 @@ const EMOTE_MS = 1800;
 const SWIPE_MIN = 24; // px along the dominant axis
 const TAP_MAX = 12; // px: a press that moved less is a tap
 
-/* A friend who lost their connection: their mascot hides behind two tile backs
-   (.gone: only the top of the head peeks out), from view.players[i].away. */
-const HIDE_FX = '<span class="hide" aria-hidden="true"><i></i><i></i></span>';
-// set a mascot box's away state ('gone' | null): class plus the tile backs
+/* Away mascots, from view.players[i]. .gone: a friend lost their connection; the
+   mascot hides behind two tile backs (only the top of the head peeks out). .sleep: the
+   table has waited on them for 45 s (room.js SLEEP_MS); eyes shut, slow breathing,
+   floating z's, until they touch the screen. */
+const AWAY_FX = { gone: '<span class="hide" aria-hidden="true"><i></i><i></i></span>', sleep: '<span class="zz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>' };
+export const awayOf = (p) => (!p ? null : p.away === 'gone' ? 'gone' : p.sleep ? 'sleep' : null);
+// set a mascot box's away state ('gone' | 'sleep' | null): class plus the extra markup
 export function setAway(el, away) {
-  away = away === 'gone' ? away : null;
+  away = AWAY_FX[away] ? away : null;
   if (!el || (el._away || null) === away) return;
   el._away = away;
-  for (const x of el.querySelectorAll('.hide')) x.remove();
-  el.classList.remove('gone');
+  for (const x of el.querySelectorAll('.hide, .zz')) x.remove();
+  el.classList.remove('gone', 'sleep');
   if (!away) return;
   if (el._emo) { clearTimeout(el._emoT); el.classList.remove('emo', 'emo-' + el._emo); for (const x of el.querySelectorAll('.emo-fx, .bub')) x.remove(); el._emo = null; }
   el.classList.remove('idle');
-  el.classList.add('gone');
-  el.insertAdjacentHTML('beforeend', HIDE_FX);
+  el.classList.add(away);
+  el.insertAdjacentHTML('beforeend', AWAY_FX[away]);
 }
 const STAR = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0Q5.6 4.4 10 5Q5.6 5.6 5 10Q4.4 5.6 0 5Q4.4 4.4 5 0Z"/></svg>';
 const HEART = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 9C1.6 6.6 0 5 0 3.1 0 1.4 1.3.3 2.7.3 3.7.3 4.5.9 5 1.7 5.5.9 6.3.3 7.3.3 8.7.3 10 1.4 10 3.1 10 5 8.4 6.6 5 9Z"/></svg>';
@@ -292,7 +327,7 @@ export function emoteHTML(kind, text = EMOTE_TEXT[kind]) {
 // Show an emote on a mascot box (.ani on the table, .mav in the lobby) for EMOTE_MS:
 // classes .emo .emo-<kind> drive the face and moves, plus effects and a bubble.
 export function playEmoteOn(el, kind, text) {
-  if (!el || !el.firstChild || !EMOTE_TEXT[kind] || el.classList.contains('gone')) return;
+  if (!el || !el.firstChild || !EMOTE_TEXT[kind] || el.classList.contains('gone') || el.classList.contains('sleep')) return;
   clearTimeout(el._emoT);
   for (const x of el.querySelectorAll('.emo-fx, .bub')) x.remove();
   el.classList.remove('emo');
@@ -659,7 +694,7 @@ export class Table {
     if (el._emo) el.classList.remove('emo', 'emo-' + el._emo);
     el._emo = null;
     el._away = null;
-    el.classList.remove('gone');
+    el.classList.remove('gone', 'sleep');
     el.innerHTML = p.animal == null ? '' : animalSVG(p.animal);
     el.title = p.animal == null ? '' : ANIMAL_NAMES[p.animal % ANIMAL_NAMES.length];
   }
@@ -775,13 +810,13 @@ export class Table {
     const L = this.layers[r];
     const wind = (s - v.dealer + 4) % 4;
     const isTurn = (v.phase === 'discard' && v.turn === s) || (v.claimTile && v.claimTile.from === s);
-    setCls(L.info, `info${isTurn ? ' turn' : ''}${wind === 0 ? ' dealer' : ''}${p.away ? ` away-${p.away}` : p.kind === 'bot' ? ' bot' : ''}`);
+    setCls(L.info, `info${isTurn ? ' turn' : ''}${wind === 0 ? ' dealer' : ''}${p.away === 'gone' ? (p.kind === 'bot' ? ' away-gone bot' : ' away-gone') : p.kind === 'bot' ? ' bot' : p.sleep ? ' away-sleep' : ''}`);
     setText(L.wind, WIND_CHARS[wind]);
     setText(L.score, p.score);
     if (L.stick.hidden === !!p.riichi) L.stick.hidden = !p.riichi;
     setText(L.pname, p.name);
     this.patchAnimal(r, p);
-    setAway(this.anis[r], p.away);
+    setAway(this.anis[r], awayOf(p));
 
     const hl = v.claimTile ? v.claimTile.from === s : v.lastDiscard && v.lastDiscard.seat === s;
     const list = [];

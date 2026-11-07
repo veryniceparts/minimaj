@@ -13,9 +13,11 @@ There are two ways to play:
   room** and send the 5-letter code or link. Players connect peer-to-peer over
   WebRTC. The public PeerJS server is only used to set up the connection.
 
-If someone drops out, a computer takes over their seat and their mascot hides
-behind two tiles. They get it back by opening the link again, or just by
-reloading the page.
+If someone drops out, their mascot hides behind two tiles and the table waits
+for them: they get their seat back by opening the link again, or just by
+reloading the page. If they don't come back, the others can vote (a majority)
+to let a computer play their seat. Someone the table has waited on for 45
+seconds falls asleep (only their mascot; a touch wakes it).
 
 ## Download
 
@@ -63,7 +65,7 @@ your hand stays sorted; turn it off to drag your tiles into any order), the man-
 ## Rules implemented
 
 - 136 tiles with one red five per suit, a 14-tile dead wall, kan dora, ura dora and rinshan draws
-- Chi, pon, open kan, closed kan, added kan (with chankan), and the kuikae (swap-call) restriction
+- Chi (each choice shows the whole run), pon, open kan, closed kan, added kan (with chankan), and the kuikae (swap-call) restriction
 - Riichi (1000-point deposit, ippatsu, double riichi), tsumo, ron with head-bump (closest player wins)
 - Furiten: from your own discards, temporary, and permanent after riichi
 - Yaku: riichi, ippatsu, menzen tsumo, pinfu, tanyao, iipeikou, yakuhai, haitei, houtei, rinshan, chankan,

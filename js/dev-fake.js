@@ -41,6 +41,7 @@ export function createSession(opts, h) {
       queued = false;
       if (game !== g) return;
       const v = structuredClone(g.view(0));
+      v.votes = g.players.map((p, s) => (s && g.isGone(s) ? { seat: s, n: 0, need: 1, mine: false } : null)).filter(Boolean);
       h.onView({ ...v, isHost: true });
       botMood(v);
     });
@@ -94,11 +95,17 @@ export function createSession(opts, h) {
       }
       // ?gone=2: that computer seat shows as a disconnected friend (screenshots)
       if (+q.get('gone') >= 1 && +q.get('gone') <= 3) g.players[+q.get('gone')].away = 'gone';
+      // ?offline=2: a disconnected friend the table waits for (vote to let the computer play)
+      if (+q.get('offline') >= 1 && +q.get('offline') <= 3) { const p = g.players[+q.get('offline')]; p.kind = 'human'; p.away = 'gone'; }
+      // ?sleep=3: that seat's mascot sleeps
+      if (+q.get('sleep') >= 1 && +q.get('sleep') <= 3) g.players[+q.get('sleep')].sleep = true;
       g.start();
     },
     setSettings(s) { if (closed) return; settings = { ...settings, ...s }; h.onLobby(lobby()); },
     backToLobby() { if (closed) return; stop(); rerolls = 0; h.onLobby(lobby()); },
     emote: (e) => emit(game ? 0 : -1, e),
+    voteCpu(seat) { if (game && game.isGone(seat)) game.setKind(seat, 'bot', null, 'gone'); },
+    wake() { if (game && game.players[0].sleep) game.setSleep(0, false); },
     reroll() {
       if (closed || game) return;
       if (rerolls >= MAX_REROLLS) { h.onError('No rerolls left', false); return; }

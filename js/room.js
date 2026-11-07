@@ -36,6 +36,9 @@ export const MAX_REROLLS = 3; // per member per lobby visit (reset when a game e
 const REMEMBER_MAX = 32; // lobby leavers whose mascot is kept for a rejoin (same cid)
 const TIMEOUT_MS = 9000;
 const CHECK_MS = 1000;
+// a human the table has waited on this long falls asleep (their mascot only; nobody
+// plays for them). Any action, emote or touch wakes them.
+export const SLEEP_MS = 45000;
 const RATE_WINDOW_MS = 1000;
 const RATE_MAX = 60; // messages per window per connection; extra ones are dropped
 
@@ -71,6 +74,9 @@ export function createRoom(env) {
   const settings = { length: 1 };
   let game = null;
   let seats = null; // seat -> member | null (bot)
+  // votes to let the computer play a disconnected friend's seat: seat -> Set of voter cids
+  let votes = new Map();
+  let waitSince = [null, null, null, null]; // when the table started waiting on each seat
   let destroyed = false;
   let flushQueued = false;
   let lobbyDirty = false;
@@ -138,6 +144,7 @@ export function createRoom(env) {
           if (!m || m.connId == null) return;
           const v = game.view(seat);
           v.isHost = isHost(m);
+          v.votes = votesFor(m);
           send(m.connId, { t: 'view', view: v });
         });
       } else if (doLobby || doView) {
@@ -163,9 +170,12 @@ export function createRoom(env) {
       remember(m);
       markLobby();
     } else {
+      // keep the seat: the table waits for them to come back, unless the others vote
+      // for the computer to play it (onVote)
       m.gone = true;
       const seat = seatOf(m);
-      if (seat >= 0) game.setKind(seat, 'bot', null, 'gone');
+      if (seat >= 0) { votes.delete(seat); game.setKind(seat, 'human', null, 'gone'); }
+      recountVotes();
       markView();
     }
     log(`${m.name} left`);
@@ -217,8 +227,9 @@ export function createRoom(env) {
       }
       members.push(m);
     } else {
-      // join a running game: take over a computer seat
-      const seat = seats.findIndex((x) => !x || x.gone);
+      // join a running game: take over a computer seat (a disconnected friend's seat
+      // only once the others let the computer play it)
+      const seat = seats.findIndex((x, i) => !x || (x.gone && game.isBot(i)));
       if (seat < 0) { fatal(connId, 'Game is full.', 'full'); return; }
       const old = seats[seat];
       if (old) members = members.filter((x) => x !== old);
@@ -232,7 +243,8 @@ export function createRoom(env) {
     log(`${name} joined`);
     if (game) {
       const seat = seatOf(m);
-      if (seat >= 0) game.setKind(seat, 'human', name);
+      if (seat >= 0) { votes.delete(seat); waitSince[seat] = null; game.setKind(seat, 'human', name); }
+      recountVotes();
       markView();
     }
     markLobby();
@@ -306,6 +318,8 @@ export function createRoom(env) {
     game.stop();
     game = null;
     seats = null;
+    votes = new Map();
+    waitSince = [null, null, null, null];
   }
 
   function backToLobby() {
@@ -341,6 +355,64 @@ export function createRoom(env) {
     for (const x of members) if (x.connId != null) send(x.connId, out);
   }
 
+  /* ---------------- disconnected friends: wait, or vote for the computer ---------------- */
+
+  // the friends still playing: they decide (a majority) whether the computer takes a seat
+  const voters = () => (seats || []).filter((x) => x && !x.gone && x.connId != null);
+  const votesNeeded = () => Math.floor(voters().length / 2) + 1;
+  // per view: the seats waiting for a vote, how many voted, how many are needed, and yours
+  function votesFor(me) {
+    const out = [];
+    if (!game) return out;
+    seats.forEach((x, s) => {
+      if (!x || !game.isGone(s)) return;
+      const set = votes.get(s);
+      out.push({ seat: s, n: set ? set.size : 0, need: votesNeeded(), mine: !!(set && me && set.has(me.cid)) });
+    });
+    return out;
+  }
+  // after someone leaves or comes back: drop votes from those who left; enough votes: the computer plays
+  function recountVotes() {
+    if (!game) return;
+    const live = new Set(voters().map((x) => x.cid));
+    for (const [s, set] of [...votes]) {
+      for (const cid of [...set]) if (!live.has(cid)) set.delete(cid);
+      if (!game.isGone(s)) votes.delete(s);
+      else if (set.size && set.size >= votesNeeded()) { votes.delete(s); log(`computer plays seat ${s}`); game.setKind(s, 'bot', null, 'gone'); }
+    }
+  }
+  // {t:'vote-cpu', seat}: let the computer play a disconnected friend's seat
+  function onVote(c, msg) {
+    const m = c.member;
+    if (!game || !m || m.connId == null || m.gone || seatOf(m) < 0) return;
+    const s = msg.seat;
+    if (!Number.isInteger(s) || s < 0 || s > 3 || !game.isGone(s)) return;
+    if (!votes.has(s)) votes.set(s, new Set());
+    votes.get(s).add(m.cid);
+    recountVotes();
+    markView();
+  }
+
+  /* ---------------- asleep: the table waited on someone for SLEEP_MS ---------------- */
+
+  function checkSleep(now) {
+    if (!game) return;
+    const w = game.waitingOn();
+    for (let s = 0; s < 4; s++) {
+      if (w.indexOf(s) < 0) { waitSince[s] = null; continue; }
+      if (waitSince[s] == null) waitSince[s] = now;
+      else if (now - waitSince[s] >= SLEEP_MS) game.setSleep(s, true);
+    }
+  }
+  // the member did something: wake their mascot and restart the wait
+  function wake(m) {
+    if (!game || !m) return;
+    const s = seatOf(m);
+    if (s < 0) return;
+    waitSince[s] = null;
+    if (game.players[s].sleep) game.setSleep(s, false);
+  }
+
   /* ---------------- heartbeat ---------------- */
 
   const EMPTY_MS = 60000;
@@ -360,6 +432,7 @@ export function createRoom(env) {
         }
       }
       lastCheck = now;
+      checkSleep(now);
       // nobody left at the table: stop the bots after a grace period (saves battery on a phone host)
       if (game && !members.some((m) => m.connId != null)) {
         if (emptySince == null) emptySince = now;
@@ -394,12 +467,15 @@ export function createRoom(env) {
           case 'hello': onHello(connId, c, msg); break;
           case 'act':
             if (game && c.member) {
+              wake(c.member);
               const seat = seatOf(c.member);
               if (seat >= 0 && msg.a && typeof msg.a === 'object') game.act(seat, msg.a);
             }
             break;
           case 'lobby-cmd': onLobbyCmd(connId, c, msg); break;
-          case 'emote': onEmote(c, msg); break;
+          case 'emote': onEmote(c, msg); wake(c.member); break;
+          case 'wake': wake(c.member); break;
+          case 'vote-cpu': onVote(c, msg); break;
           default: break;
         }
       } catch (e) { log('message failed', e); }

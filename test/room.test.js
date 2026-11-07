@@ -101,7 +101,7 @@ export function runRoomTests() {
     assert.equal(clock.pending(), 0, 'destroy clears timers');
   });
 
-  t('rejoin restores seat; timeout -> bot; new cid takes bot seat', () => {
+  t('rejoin restores seat; timeout -> seat kept (gone); new cid takes a computer seat', () => {
     const r = mk({ botDelay: 100000 }); // bots never move during this test
     r.join('a', 'A', 'ca', true);
     r.join('b', 'B', 'cb');
@@ -110,7 +110,7 @@ export function runRoomTests() {
     // reconnect with a new connection, same cid
     r.room.closed('b');
     clock.drain();
-    assert.equal(r.last('a', 'view').view.players[seatB].kind, 'bot');
+    assert.deepEqual([r.last('a', 'view').view.players[seatB].kind, r.last('a', 'view').view.players[seatB].away], ['human', 'gone']);
     r.join('b2', 'B', 'cb');
     assert.equal(r.last('b2', 'view').view.seat, seatB);
     assert.equal(r.last('a', 'view').view.players[seatB].kind, 'human');
@@ -129,15 +129,26 @@ export function runRoomTests() {
     for (let i = 0; i < 11; i++) { r.msg('a', { t: 'ping', n: i }); clock.advance(1000); }
     assert.ok(r.closedIds.includes('b3'));
     assert.ok(!r.closedIds.includes('a'));
-    assert.equal(r.last('a', 'view').view.players[seatB].kind, 'bot');
+    assert.deepEqual([r.last('a', 'view').view.players[seatB].kind, r.last('a', 'view').view.players[seatB].away], ['human', 'gone']);
     // a stranger joins mid-game: takes a bot seat
     r.join('d', 'Dave', 'cd');
     const vd = r.last('d', 'view').view;
     assert.equal(vd.players[vd.seat].name, 'Dave');
     assert.equal(vd.players[vd.seat].kind, 'human');
     assert.equal(vd.isHost, false);
-    // two more strangers fill the rest, the next one is refused
-    r.join('e', 'E', 'ce'); r.join('f', 'F', 'cf');
+    // one more stranger takes the other computer seat; B's seat is still B's
+    r.join('e', 'E', 'ce');
+    r.join('f0', 'F', 'cf');
+    assert.equal(r.last('f0', 'error').fatal, true);
+    // A, Dave and E vote (2 of 3 needed): the computer plays B's seat, a stranger may take it
+    r.msg('a', { t: 'vote-cpu', seat: seatB });
+    assert.equal(r.last('a', 'view').view.players[seatB].kind, 'human');
+    assert.deepEqual(r.last('a', 'view').view.votes.map(({ seat, n, need, mine }) => [seat, n, need, mine]), [[seatB, 1, 2, true]]);
+    r.msg('d', { t: 'vote-cpu', seat: seatB });
+    assert.deepEqual([r.last('a', 'view').view.players[seatB].kind, r.last('a', 'view').view.players[seatB].away], ['bot', 'gone']);
+    assert.deepEqual(r.last('a', 'view').view.votes, []);
+    r.join('f', 'F', 'cf');
+    assert.equal(r.last('f', 'view').view.seat, seatB);
     r.join('g', 'G', 'cg');
     assert.equal(r.last('g', 'error').fatal, true);
     clock.advance(300);
@@ -430,7 +441,7 @@ export function runRoomTests() {
     r.room.destroy();
   });
 
-  t('away: a dropped friend shows as gone while a computer plays their seat', () => {
+  t('away: a dropped friend keeps the seat; the table waits; a vote lets the computer play', () => {
     const r = mk({ botDelay: 100000 });
     r.join('a', 'A', 'ca', true);
     r.join('b', 'B', 'cb');
@@ -439,9 +450,48 @@ export function runRoomTests() {
     const pb = () => r.last('a', 'view').view.players[seatB];
     assert.deepEqual([pb().kind, pb().away], ['human', null]);
     r.room.closed('b'); clock.drain();
-    assert.deepEqual([pb().kind, pb().away], ['bot', 'gone']);
+    assert.deepEqual([pb().kind, pb().away], ['human', 'gone']);
+    // junk votes and votes for seats that are not gone are ignored
+    for (const seat of [-1, 7, 'x', null, (seatB + 1) % 4]) r.msg('a', { t: 'vote-cpu', seat });
+    assert.equal(pb().kind, 'human');
+    // back before any vote: their own seat again
     r.join('b2', 'B', 'cb');
     assert.deepEqual([pb().kind, pb().away, pb().name], ['human', null, 'B']);
+    // gone again; A alone is the majority: the computer plays
+    r.room.closed('b2'); clock.drain();
+    r.msg('a', { t: 'vote-cpu', seat: seatB });
+    assert.deepEqual([pb().kind, pb().away], ['bot', 'gone']);
+    // and they can still come back
+    r.join('b3', 'B', 'cb');
+    assert.deepEqual([pb().kind, pb().away], ['human', null]);
+    r.room.destroy();
+  });
+
+  t('asleep: the table waits on someone for 45 s, then their mascot sleeps until they act', () => {
+    const r = mk({ botDelay: 100 });
+    r.join('a', 'A', 'ca', true);
+    r.msg('a', { t: 'lobby-cmd', cmd: 'start' });
+    const g = () => r.last('a', 'view').view;
+    // the computers play until it is A's turn
+    for (let i = 0; i < 200 && !(g().phase === 'discard' && g().turn === g().seat); i++) {
+      if (g().phase === 'end') r.msg('a', { t: 'act', a: { type: 'ready' } }); // a computer won first: next hand
+      else if (g().claim) r.msg('a', { t: 'act', a: { type: 'pass' } });
+      r.room.message('a', { t: 'ping' }); clock.advance(200);
+    }
+    assert.equal(g().turn, g().seat);
+    assert.equal(g().phase, 'discard');
+    const me = () => g().players[g().seat];
+    const tick = (ms) => { for (let x = 0; x < ms; x += 1000) { r.room.message('a', { t: 'ping' }); clock.advance(1000); } };
+    tick(30000);
+    assert.equal(me().sleep, false);
+    tick(17000);
+    assert.equal(me().sleep, true);
+    r.msg('a', { t: 'wake' });
+    assert.equal(me().sleep, false);
+    tick(47000);
+    assert.equal(me().sleep, true);
+    r.msg('a', { t: 'act', a: { type: 'discard', tile: g().options.discard[0] } });
+    assert.equal(me().sleep, false);
     r.room.destroy();
   });
 
