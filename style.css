@@ -657,6 +657,10 @@ summary { cursor: pointer; font-weight: 600; }
 .res.over .btns > .peekbtn { background: var(--bg-1); }
 .backs .tile.rv { box-shadow: 0 0 0 max(1px, calc(var(--w) * .05)) var(--accent), 0 calc(var(--w) * .1) calc(var(--w) * .2) var(--tile-shadow); }
 #actions .reopen { box-shadow: inset 0 0 0 2px var(--accent), 0 4px 12px rgba(var(--sh), .2); }
+/* after the end-of-hand celebration: the button that opens the result card */
+#actions .reveal { padding-inline: 30px; animation: reveal-in .45s var(--ease-pop) both, reveal-glow 1.6s ease-in-out .6s infinite alternate; }
+@keyframes reveal-in { from { transform: translateY(10px) scale(.9); opacity: 0; } }
+@keyframes reveal-glow { from { box-shadow: 0 4px 12px rgba(var(--sh), .25); } to { box-shadow: 0 0 0 5px rgba(var(--accent-rgb), .22), 0 4px 16px rgba(var(--sh), .3); } }
 
 /* ---------- cards on small screens: everything fits, no scrolling ---------- */
 @media (max-width: 480px) {

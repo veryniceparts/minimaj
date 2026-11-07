@@ -214,6 +214,16 @@ export function peekActions(v) {
   return { html: out.join(''), hint };
 }
 
+// Right after the end-of-hand celebration: the table stays (all hands shown) and one
+// highlighted button opens the result card, so the switch happens when you are ready.
+export function afterCelebActions(v) {
+  const r = v.result;
+  const name = (s) => esc(v.players[s] ? v.players[s].name : '');
+  const hint = r.type === 'draw' ? 'Ryuukyoku · draw'
+    : `${r.winner === v.seat ? 'You win' : `${name(r.winner)} wins`} · ${r.type === 'tsumo' ? 'tsumo' : `ron${r.from != null && r.from >= 0 ? ` from ${r.from === v.seat ? 'you' : name(r.from)}` : ''}`}`;
+  return { html: '<button class="act hot reveal" data-ui="open">Show results</button>', hint };
+}
+
 let current = null; // the live Table, for Escape
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !current) return;
@@ -410,6 +420,7 @@ export class Table {
     this.resKey = null;
     this.doraSet = new Set(); // tile types that are currently dora (marked with .dora)
     this.peek = false; // result card closed to look at the revealed table
+    this.celebWait = false; // peeking right after the celebration: one "Show results" button
     this.off = new AbortController(); // removes our listeners in destroy()
     root.innerHTML = TABLE_HTML;
     const q = (s) => root.querySelector(s);
@@ -605,7 +616,7 @@ export class Table {
         }
       }
     }
-    timers.push(setTimeout(() => this.endCeleb(true), ms));
+    timers.push(setTimeout(() => this.endCeleb('wait'), ms));
   }
 
   // a comforting paw patting the loser's head, with little hearts
@@ -619,7 +630,8 @@ export class Table {
     if (this.celeb) this.celeb.timers.push(setTimeout(() => p.remove(), 1500));
   }
 
-  // show: then open the result card (skipped / finished), else the view moved on
+  // show: true opens the result card (skipped); 'wait' (finished) keeps the table with a
+  // "Show results" button (afterCelebActions); false: the view moved on
   endCeleb(show) {
     if (!this.celeb) return;
     for (const t of this.celeb.timers) clearTimeout(t);
@@ -627,7 +639,13 @@ export class Table {
     this.celeb = null;
     this.el.celeb.replaceChildren();
     this.el.celebskip.hidden = true;
-    if (show && this.v && !this.off.signal.aborted) {
+    if (show === 'wait' && this.v && !this.off.signal.aborted) {
+      this.peek = true;
+      this.celebWait = true;
+      this.update(this.v, this.ui);
+      const b = this.el.actions.querySelector('.reveal');
+      if (b && matchMedia('(pointer: fine)').matches) b.focus({ preventScroll: true });
+    } else if (show && this.v && !this.off.signal.aborted) {
       this.update(this.v, this.ui);
       if (this.resKey && !this.peek) this.showModal();
     }
@@ -950,8 +968,10 @@ export class Table {
   patchBar(v, ui, rk) {
     // a new hand, a new result or the final standings always (re)opens the card
     const fresh = rk !== this.resKey && (!this.resKey || rk.startsWith('over') !== this.el.modal._over);
-    if (!rk || fresh) this.peek = false;
-    const a = this.celeb ? { html: '', hint: '<span class="cb-hint">Tap to continue</span>' } : this.peek && rk ? peekActions(v) : actionsHTML(v, ui);
+    if (!rk || fresh) this.peek = this.celebWait = false;
+    if (!this.peek) this.celebWait = false;
+    const a = this.celeb ? { html: '', hint: '<span class="cb-hint">Tap to skip</span>' }
+      : this.peek && rk ? (this.celebWait && v.result ? afterCelebActions(v) : peekActions(v)) : actionsHTML(v, ui);
     const ak = a.hint + '|' + a.html;
     if (ak !== this.actKey) {
       this.actKey = ak;
