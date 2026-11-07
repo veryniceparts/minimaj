@@ -586,12 +586,6 @@ export function createSession(opts, handlers) {
       send({ t: 'emote', e: kind });
       return true;
     },
-    // sleep (true: a computer plays your seat) or wake up; false when offline
-    afk(on) {
-      if (!transport || connState !== 'open') return false;
-      send({ t: 'afk', on: !!on });
-      return true;
-    },
     close() { stop(); },
   };
 }

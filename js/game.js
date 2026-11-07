@@ -52,8 +52,8 @@ export class Game {
 
   start() { this.startRound(); this.changed(); }
 
-  // away: why a human's seat is played by the computer: 'gone' (disconnected) or
-  // 'afk' (asleep: a long press on their mascot); null when they play themselves
+  // away: 'gone' when a human's seat is played by the computer because they
+  // disconnected; null otherwise
   setKind(seat, kind, name, away = null) {
     this.players[seat].kind = kind;
     this.players[seat].away = away;

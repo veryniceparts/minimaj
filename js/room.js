@@ -117,7 +117,7 @@ export function createRoom(env) {
 
   function lobbyFor(me) {
     return {
-      members: members.map((m) => ({ name: m.name, host: isHost(m), you: m === me, connected: m.connId != null, animal: m.animal, afk: !!m.afk })),
+      members: members.map((m) => ({ name: m.name, host: isHost(m), you: m === me, connected: m.connId != null, animal: m.animal })),
       rerollsLeft: me ? Math.max(0, MAX_REROLLS - (me.rerolls || 0)) : 0,
       maxRerolls: MAX_REROLLS,
       settings: { length: settings.length },
@@ -201,7 +201,7 @@ export function createRoom(env) {
           fatal(oldId, 'You joined this table from another tab or window, so this one was disconnected.', 'replaced');
         } else closeConn(oldId);
       }
-      m.connId = connId; m.name = name; m.gone = false; m.afk = false;
+      m.connId = connId; m.name = name; m.gone = false;
     } else if (!game) {
       if (members.length >= MAX) { fatal(connId, 'Room is full.', 'full'); return; }
       m = { cid, name, connId, gone: false, animal: -1, rerolls: 0 };
@@ -298,8 +298,6 @@ export function createRoom(env) {
     const opts = { length: settings.length, onChange: () => markView() };
     if (env.botDelay != null) opts.botDelay = env.botDelay;
     game = new Game(players, opts);
-    // asleep in the lobby: the computer plays for them from the first hand
-    seats.forEach((m, i) => { if (m && m.afk) game.setKind(i, 'bot', null, 'afk'); });
     game.start();
   }
 
@@ -341,24 +339,6 @@ export function createRoom(env) {
     const out = { t: 'emote', seat, e: msg.e, n: ++emoteN };
     if (!game) out.member = member;
     for (const x of members) if (x.connId != null) send(x.connId, out);
-  }
-
-  /* ---------------- away (afk) ---------------- */
-
-  // {t:'afk', on}: a long press on your own mascot puts it to sleep (on), a tap
-  // wakes it. While asleep at the table the computer plays your seat.
-  function onAfk(c, msg) {
-    const m = c.member;
-    if (!m || m.connId == null) return;
-    const on = msg.on === true;
-    if (!!m.afk === on) return;
-    m.afk = on;
-    log(`${m.name} ${on ? 'is away' : 'is back'}`);
-    if (game) {
-      const seat = seatOf(m);
-      if (seat >= 0) game.setKind(seat, on ? 'bot' : 'human', on ? null : m.name, on ? 'afk' : null);
-      markView();
-    } else markLobby();
   }
 
   /* ---------------- heartbeat ---------------- */
@@ -414,14 +394,12 @@ export function createRoom(env) {
           case 'hello': onHello(connId, c, msg); break;
           case 'act':
             if (game && c.member) {
-              if (c.member.afk) onAfk(c, { on: false }); // playing a tile wakes you up
               const seat = seatOf(c.member);
               if (seat >= 0 && msg.a && typeof msg.a === 'object') game.act(seat, msg.a);
             }
             break;
           case 'lobby-cmd': onLobbyCmd(connId, c, msg); break;
           case 'emote': onEmote(c, msg); break;
-          case 'afk': onAfk(c, msg); break;
           default: break;
         }
       } catch (e) { log('message failed', e); }

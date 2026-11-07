@@ -436,9 +436,8 @@ summary { cursor: pointer; font-weight: 600; }
 .info .pname { overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--muted); }
 .info.bot .pname::after { content: " · cpu"; opacity: .6; font-size: .85em; }
 .info.away-gone .pname::after { content: " · offline"; opacity: .6; font-size: .85em; }
-.info.away-afk .pname::after { content: " · zzz"; opacity: .6; font-size: .85em; }
 .info.away-gone .txt { opacity: .6; }
-@media (max-width: 560px), (min-aspect-ratio: 5/4) and (max-height: 600px) { .info.bot .pname::after, .info.away-gone .pname::after, .info.away-afk .pname::after { content: none; } .info .stick { width: 1.8em; } }
+@media (max-width: 560px), (min-aspect-ratio: 5/4) and (max-height: 600px) { .info.bot .pname::after, .info.away-gone .pname::after { content: none; } .info .stick { width: 1.8em; } }
 .stick {
   flex: none; display: inline-block; width: 2.6em; height: .55em; border-radius: .3em; background: var(--stick); position: relative;
   box-shadow: 0 0 .5em rgba(255, 111, 145, .4);
@@ -901,9 +900,8 @@ summary { cursor: pointer; font-weight: 600; }
 .ani { --es: var(--as); }
 .ani.emo { z-index: 4; }
 
-/* away mascots (ui.js setAway). .gone: a friend lost their connection; the mascot
-   sinks behind two tile backs and peeks over them now and then. .afk: asleep (a long
-   press on your own mascot): eyes shut, slow breathing, z's float up. */
+/* a friend lost their connection (ui.js setAway): the mascot sinks behind two
+   tile backs and peeks over them now and then */
 .ani svg, .seats .mav svg { transition: transform .6s var(--ease-out), clip-path .6s var(--ease-out), opacity .6s; }
 .gone svg { transform: translateY(12%); clip-path: inset(0 0 8% 0); opacity: .9; animation: ani-peek 7s ease-in-out 1.2s infinite; }
 @keyframes ani-peek { 0%, 62%, 100% { transform: translateY(12%); } 70%, 84% { transform: translateY(2%); } }
@@ -917,25 +915,7 @@ summary { cursor: pointer; font-weight: 600; }
   box-shadow: 0 1px 2px rgba(var(--sh), .4), inset 0 1px 0 rgba(255, 255, 255, .35);
 }
 @keyframes hide-in { from { transform: translateY(40%); opacity: 0; } }
-.afk .an .eo { transform: scaleY(.14); }
-.afk .an .eo circle[fill="#fff"] { display: none; }
-.afk .bd { animation: ani-breathe 3.4s ease-in-out infinite; }
-.afk svg { opacity: .9; }
-@keyframes ani-breathe { 50% { transform: scale(1.04, .95); } }
-.zz {
-  position: absolute; left: 70%; bottom: 72%; width: 0; height: 0; pointer-events: none;
-  font: 800 max(9px, calc(var(--es) * .3))/1 var(--round); color: var(--accent);
-}
-.zz i { position: absolute; left: 0; bottom: 0; font-style: normal; opacity: 0; animation: zz 2.7s ease-in infinite; text-shadow: 0 1px 2px rgba(var(--sh), .5); }
-.zz i:nth-child(2) { animation-delay: .9s; }
-.zz i:nth-child(3) { animation-delay: 1.8s; }
-@keyframes zz { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(90%, -170%) scale(1.2); } }
-@media (prefers-reduced-motion: reduce) {
-  .zz i { animation: none !important; opacity: .85; }
-  .zz i:nth-child(2) { transform: translate(55%, -95%) scale(.85); }
-  .zz i:nth-child(3) { transform: translate(110%, -190%) scale(.7); }
-  .gone svg { animation: none !important; }
-}
+@media (prefers-reduced-motion: reduce) { .gone svg { animation: none !important; } }
 .an .tear { transform-box: fill-box; transform-origin: 50% 0; }
 .emo-go .bd { animation: emo-go 1.05s var(--ease-pop); }
 .emo-hurray .bd { animation: emo-hurray 1.5s cubic-bezier(.3, .7, .4, 1); }

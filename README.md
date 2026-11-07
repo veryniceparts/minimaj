@@ -15,8 +15,7 @@ There are two ways to play:
 
 If someone drops out, a computer takes over their seat and their mascot hides
 behind two tiles. They get it back by opening the link again, or just by
-reloading the page. Long-press your own mascot to go away for a bit: it falls
-asleep and the computer plays for you until you tap it again.
+reloading the page.
 
 ## Download
 
