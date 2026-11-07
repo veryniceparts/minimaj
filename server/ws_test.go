@@ -60,7 +60,7 @@ func TestWebSocketRoom(t *testing.T) {
 			}
 		}
 	}
-	send(map[string]any{"t": "hello", "name": "Ann", "cid": "test-cid-1", "ver": 1, "host": true})
+	send(map[string]any{"t": "hello", "name": "Ann", "cid": "test-cid-1", "ver": 2, "host": true})
 	lobby := recv("lobby")["lobby"].(map[string]any)
 	if lobby["isHost"] != true {
 		t.Fatalf("loopback client should be host: %v", lobby)
@@ -143,7 +143,7 @@ func TestDuplicateTabIsToldWhy(t *testing.T) {
 		return c
 	}
 	hello := func(c *websocket.Conn) {
-		b, _ := json.Marshal(map[string]any{"t": "hello", "name": "Ann", "cid": "same", "ver": 1, "host": false})
+		b, _ := json.Marshal(map[string]any{"t": "hello", "name": "Ann", "cid": "same", "ver": 2, "host": false})
 		if err := c.Write(ctx, websocket.MessageText, b); err != nil {
 			t.Fatal(err)
 		}
@@ -238,7 +238,7 @@ func TestHostRightsNeedAnAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.CloseNow()
-	b, _ := json.Marshal(map[string]any{"t": "hello", "name": "Eve", "cid": "x", "ver": 1, "host": true})
+	b, _ := json.Marshal(map[string]any{"t": "hello", "name": "Eve", "cid": "x", "ver": 2, "host": true})
 	if err := c.Write(ctx, websocket.MessageText, b); err != nil {
 		t.Fatal(err)
 	}

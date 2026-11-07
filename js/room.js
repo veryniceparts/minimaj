@@ -8,8 +8,8 @@ import { Game } from './game.js';
 // MIN_PROTO only when this room can no longer talk to older clients. Friends
 // often run different builds (an old app vs. the newest web page), so the
 // room accepts any client in [MIN_PROTO, PROTO] and says who must update.
-export const PROTO = 1;
-export const MIN_PROTO = 1;
+export const PROTO = 2;
+export const MIN_PROTO = 2;
 
 const MAX = 4;
 const BOT_NAMES = ['CPU Ume', 'CPU Take', 'CPU Matsu'];
@@ -228,8 +228,8 @@ export function createRoom(env) {
       members.push(m);
     } else {
       // join a running game: take over a computer seat (a disconnected friend's seat
-      // only once the others let the computer play it)
-      const seat = seats.findIndex((x, i) => !x || (x.gone && game.isBot(i)));
+      // only once the others let the computer play it; never the host's, so they can come back)
+      const seat = seats.findIndex((x, i) => !x || (x.gone && game.isBot(i) && x.cid !== hostCid));
       if (seat < 0) { fatal(connId, 'Game is full.', 'full'); return; }
       const old = seats[seat];
       if (old) members = members.filter((x) => x !== old);
@@ -473,7 +473,7 @@ export function createRoom(env) {
             }
             break;
           case 'lobby-cmd': onLobbyCmd(connId, c, msg); break;
-          case 'emote': onEmote(c, msg); wake(c.member); break;
+          case 'emote': wake(c.member); onEmote(c, msg); break;
           case 'wake': wake(c.member); break;
           case 'vote-cpu': onVote(c, msg); break;
           default: break;

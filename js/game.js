@@ -615,6 +615,12 @@ export class Game {
     if (this.phase === 'discard' && this.isBot(this.turn)) {
       const s = this.turn;
       later(() => this.botAct(s), this.botDelay);
+    } else if (this.phase === 'discard' && this.isGone(this.turn) && this.players[this.turn].riichi) {
+      // a disconnected human in riichi has a forced move: discard the drawn tile
+      // (a possible tsumo waits for them)
+      const s = this.turn;
+      const o = this.turnOptions(s);
+      if (o && !o.tsumo && o.discard.length) later(() => this.act(s, { type: 'discard', tile: o.discard[0] }), this.botDelay);
     } else if (this.phase === 'claim') {
       // a disconnected human can't answer: their claims pass by themselves
       const gone = Object.keys(this.claim.opts).map(Number).filter((s) => !this.claim.resp[s] && this.isGone(s));

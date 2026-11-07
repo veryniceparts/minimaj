@@ -534,6 +534,30 @@ function scenarioTests(t) {
     assert.equal(g.kyoku, 1);
     g.stop();
   });
+  t('away: a gone human in riichi discards the drawn tile by itself; otherwise the table waits', () => {
+    const clock = installFakeClock();
+    try {
+      const g = rig({ hands: ['234m567p234s88s6s9m', FILL[1], '11p258m369p47s136z', FILL[3]], draws: '7s1p9p9p1m', scores: SCORES_25 });
+      discard(g, 0, '9m', true);
+      passAll(g);
+      assert.equal(g.turn, 1);
+      g.setKind(1, 'human', null, 'gone'); // not in riichi: nobody plays for them
+      clock.advance(10000);
+      assert.equal(g.turn, 1);
+      assert.equal(g.phase, 'discard');
+      g.setKind(1, 'human');
+      tsumogiri(g, 1);
+      g.setKind(0, 'human', null, 'gone');
+      tsumogiri(g, 2);
+      tsumogiri(g, 3);
+      assert.equal(g.turn, 0);
+      const drawn = g.players[0].drawn;
+      clock.advance(10000);
+      assert.equal(g.players[0].discards.at(-1).tile, drawn);
+      assert.notEqual(g.turn, 0);
+      g.stop();
+    } finally { clock.uninstall(); }
+  });
   t('views never show hidden tiles during play', () => {
     const g = rig({ hands: ['5s147m258p369s127z', '234m567p234s88s67s', FILL[2], FILL[3]], draws: '9m' });
     for (let s = 0; s < 4; s++) checkView(g, g.view(s), s);
