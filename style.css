@@ -338,7 +338,7 @@ button.code.tapcopy:active { transform: scale(.96); }
 .qr svg { width: 100%; height: 100%; display: block; }
 .urls { font-size: 12px; color: var(--muted); margin: 6px 0 0; word-break: break-all; }
 /* join a friend's table (app home) */
-.nearby { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
+.nearby { list-style: none; padding: 0; margin: 0 0 8px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .nearby li.muted { text-align: center; padding: 2px 0; }
 /* "Local — same Wi-Fi only" tick under Host a table (app home) */
 .card label.tick { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 8px 0 0; font-size: 13px; color: var(--muted); cursor: pointer; }
@@ -346,6 +346,7 @@ button.code.tapcopy:active { transform: scale(.96); }
 .card label.tick input:checked + span { color: var(--text); }
 .nearby .act { width: 100%; justify-content: space-between; padding: 8px 12px; text-align: left; }
 .nearby .nm { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.nearby .nm .tn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nearby .nm small { font-weight: 500; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nearby .go { color: var(--accent); flex: none; }
 @media (max-height: 430px) { .nearby li:nth-child(n+3) { display: none; } .nearby .act { padding: 6px 12px; } }
@@ -529,7 +530,7 @@ summary { cursor: pointer; font-weight: 600; }
   display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
   min-height: 44px; max-width: calc(var(--hw) * 15.6); margin: 0 auto;
 }
-#hint { color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0; }
+#hint { color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
 #hint .who { color: var(--text); font-weight: 700; }
 #hint .mini .tile { --w: 17px; }
 .myturn #hint { color: var(--turn); font-weight: 700; }
@@ -630,7 +631,7 @@ summary { cursor: pointer; font-weight: 600; }
 @keyframes scalein { from { opacity: 0; transform: scale(.9) translateY(10px); } }
 #modal .card { max-height: 100%; overflow: auto; overscroll-behavior: contain; width: min(520px, 100%); padding: 20px; }
 #modal .tile { --w: min(28px, calc((100vw - 60px) / 15)); }
-.res h2 { margin: 0 0 6px; }
+.res h2 { margin: 0 0 6px; overflow-wrap: anywhere; } /* a long name wraps, never widens the card */
 .res .wait { margin: 12px 0 0; text-align: center; }
 .badge { display: inline-block; padding: .12em .6em; border-radius: 999px; font-size: .8em; vertical-align: .08em; background: var(--ok); color: var(--ok-ink); }
 .rhand { display: flex; flex-wrap: wrap; align-items: flex-end; row-gap: 6px; margin: 8px 0; }
@@ -662,7 +663,8 @@ summary { cursor: pointer; font-weight: 600; }
 .res > .gorow { grid-area: go; align-self: end; display: flex; align-items: stretch; gap: 8px; margin-top: 10px; position: sticky; bottom: 0; }
 .res .gorow > .act.act { margin: 0; }
 .res .gorow > .go { flex: 1 1 auto; }
-.res .gorow > .wait { flex: 1 1 auto; margin: 0; align-self: center; }
+/* "Waiting for others… (ready: …)": at most two lines beside the button */
+.res .gorow > .wait { flex: 1 1 auto; min-width: 0; margin: 0; align-self: center; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .res .gorow > .peekbtn { flex: none; padding-left: 16px; padding-right: 16px; background: var(--bg-1); }
 .res.over .btns > .peekbtn { background: var(--bg-1); }
 .backs .tile.rv { box-shadow: 0 0 0 max(1px, calc(var(--w) * .05)) var(--accent), 0 calc(var(--w) * .1) calc(var(--w) * .2) var(--tile-shadow); }
@@ -711,7 +713,8 @@ summary { cursor: pointer; font-weight: 600; }
   .card.split .c2 { grid-area: b; }
   .card.split details { grid-area: how; align-self: start; }
   /* app home: "join a friend" goes under the intro on the left */
-  .card.split.friend { grid-template-areas: "a b" "f b" "how b"; grid-template-rows: auto auto 1fr; align-items: start; }
+  /* "How to play" under Host a table: the left column is full with tables found nearby */
+  .card.split.friend { grid-template-areas: "a b" "f b" "f how"; grid-template-rows: auto auto 1fr; align-items: start; }
   .card.split.friend .c2 { align-self: center; }
   .card.split .c3 { grid-area: f; }
   .card.split .c3 .or { margin-top: 6px; }
@@ -731,22 +734,27 @@ summary { cursor: pointer; font-weight: 600; }
   .res.win, .res.draw { display: grid; column-gap: 24px; align-items: start; }
   .res.win {
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-    grid-template-areas: "h h" "hand hand" "ind tot" "yk sc" "yk go";
-    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-areas: "h h" "hand hand" "ind tot" "yk sc" "yk nx" "yk go";
+    grid-template-rows: auto auto auto auto auto 1fr;
   }
   .res.draw {
     grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-    grid-template-areas: "h h" "hand sc" "hand go";
-    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "h h" "hand sc" "hand nx" "hand go";
+    grid-template-rows: auto auto auto 1fr;
   }
   .res > h2 { grid-area: h; }
+  /* one line, clear of the full-screen and ••• buttons over the card's top right corner */
+  .res.win > h2, .res.draw > h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 76px; }
+  .res > .nextline { grid-area: nx; margin-top: 2px; }
+  .res > .gorow { margin-top: 6px; }
+  .res .gorow > .wait { font-size: 13px; }
   .res > .rhand, .res > .rhands { grid-area: hand; }
   .res > .indic { grid-area: ind; align-self: center; }
   .res > .yaku { grid-area: yk; margin: 0; }
   .res > .total { grid-area: tot; align-self: center; text-align: right; margin: 0; font-size: 16px; }
   .res > .scores { grid-area: sc; margin: 0 0 4px; }
   .res.draw > .scores { margin-top: 8px; }
-  .res .scores td { padding: 4px 8px; }
+  .res .scores td { padding: 3px 8px; }
   .res .act.wide { margin-top: 8px; padding: 11px; }
   #modal .res.draw .tile { --w: min(26px, calc((100vw - 90px) * .6 / 17.5), calc((100vh - 170px) / 5.6)); }
   .res.draw .rhand { row-gap: 2px; margin: 4px 0 6px; }

@@ -260,14 +260,19 @@ function setScreen(name, cls = 'home') {
 // available (Chrome/Android, Safari 16.4+); it is released when hidden, so
 // it is re-requested when the page becomes visible again.
 let wakeLock = null;
+let wakePending = false; // a request is on its way: screen changes meanwhile must not ask again
 const wantWake = () => screen === 'lobby' || screen === 'game' || screen === 'connecting';
 async function updateWakeLock() {
   try {
     if (!('wakeLock' in navigator)) return;
     if (wantWake() && document.visibilityState === 'visible') {
-      if (!wakeLock) {
-        wakeLock = await navigator.wakeLock.request('screen');
-        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      if (!wakeLock && !wakePending) {
+        wakePending = true;
+        let w;
+        try { w = await navigator.wakeLock.request('screen'); } finally { wakePending = false; }
+        wakeLock = w;
+        w.addEventListener('release', () => { if (wakeLock === w) wakeLock = null; });
+        if (!wantWake() || document.visibilityState !== 'visible') updateWakeLock(); // left the table meanwhile
       }
     } else if (wakeLock) {
       const w = wakeLock; wakeLock = null; await w.release();
@@ -488,7 +493,7 @@ function renderNearby() {
     const n = Math.max(0, Math.floor(+t.players) || 0);
     const detail = [n ? `${n} player${n === 1 ? '' : 's'}` : 'empty', t.playing ? 'playing' : 'in lobby'].join(' · ');
     const li = document.createElement('li');
-    li.innerHTML = `<button class="act"><span class="nm">${host ? `${esc(host)}'s table` : 'Table'}<small>${detail}${code ? ` · ${esc(code)}` : ''}</small></span><span class="go">Join</span></button>`;
+    li.innerHTML = `<button class="act"><span class="nm"><span class="tn">${host ? `${esc(host)}'s table` : 'Table'}</span><small>${detail}${code ? ` · ${esc(code)}` : ''}</small></span><span class="go">Join</span></button>`;
     li.querySelector('button').onclick = () => goToTable(url, $('name'));
     return li;
   }));

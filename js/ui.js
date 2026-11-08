@@ -159,8 +159,8 @@ export function actionsHTML(v, ui) {
     for (const x of v.votes || []) {
       const nm = esc(v.players[x.seat].name);
       out.push(x.mine
-        ? `<button class="act ghost" disabled>Voted · ${x.n}/${x.need}</button>`
-        : b({ type: 'vote-cpu', seat: x.seat }, `Let computer play ${nm}${x.need > 1 ? ` · ${x.n}/${x.need}` : ''}`, 'call vote'));
+        ? `<button class="act ghost" disabled>Voted · ${esc(x.n)}/${esc(x.need)}</button>`
+        : b({ type: 'vote-cpu', seat: x.seat }, `Let computer play ${nm}${x.need > 1 ? ` · ${esc(x.n)}/${esc(x.need)}` : ''}`, 'call vote'));
     }
   }
   if (!v.options && v.waits && v.waits.length) {
@@ -172,8 +172,8 @@ export function actionsHTML(v, ui) {
 function deltasTable(v, r) {
   return `<table class="scores">${v.players.map((p, i) => {
     const d = r.deltas[i];
-    return `<tr${i === v.seat ? ' class="me"' : ''}><td class="w">${WIND_CHARS[(i - v.dealer + 4) % 4]}</td><td class="nm">${esc(p.name)}</td><td class="num">${r.scores[i]}</td>
-      <td class="num ${d > 0 ? 'pos' : d < 0 ? 'neg' : ''}">${d > 0 ? '+' : ''}${d || ''}</td></tr>`;
+    return `<tr${i === v.seat ? ' class="me"' : ''}><td class="w">${WIND_CHARS[(i - v.dealer + 4) % 4]}</td><td class="nm">${esc(p.name)}</td><td class="num">${esc(r.scores[i])}</td>
+      <td class="num ${d > 0 ? 'pos' : d < 0 ? 'neg' : ''}">${d > 0 ? '+' : ''}${esc(d || '')}</td></tr>`;
   }).join('')}</table>`;
 }
 
@@ -199,13 +199,13 @@ function nextLine(v, r) {
   const n = r.next;
   if (!n) return '';
   const what = `${WIND_CHARS[n.round]}${n.kyoku + 1}局${n.honba ? ` · ${n.honba} honba` : ''}`;
-  return `<p class="nextline">Next: <b>${what}</b>${n.renchan ? ' · the dealer stays' : ''}</p>`;
+  return `<p class="nextline">Next: <b>${esc(what)}</b>${n.renchan ? ' · the dealer stays' : ''}</p>`;
 }
 
 export function resultHTML(v) {
   const r = v.result;
   if (v.phase === 'over') {
-    const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td class="nm">${miniAnimal(v.players[f.seat])}${esc(f.name)}</td><td class="num">${f.score}</td></tr>`).join('');
+    const rows = v.final.map((f, i) => `<tr${f.seat === v.seat ? ' class="me"' : ''}><td class="rank">${i + 1}</td><td class="nm">${miniAnimal(v.players[f.seat])}${esc(f.name)}</td><td class="num">${esc(f.score)}</td></tr>`).join('');
     return `<div class="res over"><h2 class="big">Game over</h2><table class="scores final">${rows}</table>${r ? nextLine(v, r) : ''}
       <div class="btns">${v.isHost
         ? '<button class="act hot wide" data-act=\'{"type":"ui-again"}\'>Play again</button><button class="act ghost wide" data-act=\'{"type":"ui-lobby"}\'>Back to lobby</button>'
@@ -226,8 +226,8 @@ export function resultHTML(v) {
       <div class="rhand">${r.hand.map((id) => tileHTML(id, '', ds)).join('')}<span class="gap"></span>${tileHTML(r.winTile, 'win', ds)}
         ${r.melds.map((m) => meldHTML(m, r.winner, ds)).join('')}</div>
       <div class="indic">Dora ${r.dora.map((id) => tileHTML(id)).join('')}${r.ura.length ? `<span class="sep"></span>Ura ${r.ura.map((id) => tileHTML(id)).join('')}` : ''}</div>
-      <ul class="yaku${r.yaku.length > 3 ? ' two' : ''}">${r.yaku.map(([n, h]) => `<li><span>${esc(n)}</span><span>${r.yakuman ? '' : h + ' han'}</span></li>`).join('')}</ul>
-      <div class="total">${r.yakuman ? '' : `${r.han} han ${r.fu} fu`} ${r.limit ? `<b>${r.limit}</b>` : ''} · <b>${r.points}</b></div>`;
+      <ul class="yaku${r.yaku.length > 3 ? ' two' : ''}">${r.yaku.map(([n, h]) => `<li><span>${esc(n)}</span><span>${r.yakuman ? '' : esc(h) + ' han'}</span></li>`).join('')}</ul>
+      <div class="total">${r.yakuman ? '' : `${esc(r.han)} han ${esc(r.fu)} fu`} ${r.limit ? `<b>${esc(r.limit)}</b>` : ''} · <b>${esc(r.points)}</b></div>`;
   }
   const readyNames = v.ready.map((s) => esc(v.players[s].name));
   const iAmReady = v.ready.includes(v.seat);
