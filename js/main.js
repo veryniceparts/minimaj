@@ -809,13 +809,21 @@ function renderGame(v) {
   prev = v;
 
   // riichi: the drawn tile is discarded for you
-  if (v.options && v.riichiLocked && !v.options.tsumo && !v.options.ankan.length) {
-    const key = `${v.round}:${v.kyoku}:${v.wall}:${v.options.discard[0]}`;
-    if (ui.autoKey !== key) {
-      ui.autoKey = key;
-      setTimeout(() => { if (view === v) act({ type: 'discard', tile: v.options.discard[0] }); }, 650);
-    }
+  const key = autoKey(v);
+  if (key && ui.autoKey !== key) {
+    ui.autoKey = key;
+    const tile = v.options.discard[0];
+    // re-broadcasts swap the view object, so compare state, not identity
+    setTimeout(() => {
+      if (autoKey(view) === key && view.options.discard.includes(tile)) act({ type: 'discard', tile });
+      else if (ui.autoKey === key) ui.autoKey = null; // let the same state re-arm later
+    }, 650);
   }
+}
+
+function autoKey(v) {
+  if (!v || !v.options || !v.riichiLocked || v.options.tsumo || v.options.ankan.length) return null;
+  return `${v.round}:${v.kyoku}:${v.wall}:${v.options.discard[0]}`;
 }
 
 function feedback(v, p, event) {
