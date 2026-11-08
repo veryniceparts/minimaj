@@ -17,7 +17,8 @@ If someone drops out, their mascot hides behind two tiles and the table waits
 for them: they get their seat back by opening the link again, or just by
 reloading the page. If they don't come back, the others can vote (a majority)
 to let a computer play their seat. Someone the table has waited on for 45
-seconds falls asleep (only their mascot; a touch wakes it).
+seconds falls asleep: only their mascot sleeps (nobody plays for them), and a
+touch wakes it.
 
 ## Download
 
@@ -27,9 +28,13 @@ Pushing a `v*` tag also attaches them to a GitHub release.
 | Platform | File | First launch |
 | --- | --- | --- |
 | Windows | `minimaj-windows-amd64.zip` → `minimaj.exe` | SmartScreen: *More info → Run anyway*. Allow *Private networks* in the firewall prompt. |
-| macOS | `minimaj-macos.zip` → `minimaj.app` (universal) | Not notarized: right-click the app → *Open*. Allow incoming connections. |
+| macOS | `minimaj-macos.zip` → `minimaj.app` (universal) | Not notarized: right-click the app → *Open* (macOS 15 and later: open it once, then *System Settings → Privacy & Security → Open Anyway*). Allow incoming connections. |
 | Android | `minimaj-android-arm64.apk` | Allow installing from your browser or file manager. Allow notifications so the table keeps running. New builds install as updates: CI signs them all with one key from the `ANDROID_KEYSTORE_B64` repository secret. |
 | Linux | `minimaj-linux-amd64.tar.gz` / `arm64` | Run `./minimaj`. |
+
+Everyone at a table needs the newest version (protocol 2): an older app or page
+can't join a newer table, or the other way round. The error says who must
+reload the page or update the app.
 
 ## Play
 
@@ -42,8 +47,9 @@ invite friends to a local table, show them the QR code in the lobby, or send
 them the `http://192.168.x.x:7777` link. They must be on the same Wi-Fi, or on
 your phone's hotspot. **Stop server** in the lobby shuts the table down and starts a
 fresh one. On Android, the back button at a table asks whether to keep it
-running (friends play on, and a computer takes your seat) or stop it. Either
-way you return to the main menu. Back on the main menu exits the app.
+running (friends play on; your seat waits for you, or they vote to let the
+computer play it) or stop it. Either way you return to the main menu. Back on
+the main menu asks to exit the app.
 
 **Joining a friend.** On the home screen, under *or join a friend*, the app
 lists minimaj tables it finds on your Wi-Fi; tap one to join it. Or type a code
@@ -58,7 +64,9 @@ the host should keep it open.
 **Controls.** Click a tile to discard it. On touch screens, tap to lift and tap
 again to discard. Buttons for **Chi / Pon / Kan / Ron / Tsumo / Riichi** appear
 when you can use them. After riichi your draws are discarded for you. The bar
-shows your waits when you are tenpai and warns you when you are furiten. The
+shows your waits when you are tenpai and warns you when you are furiten. When
+a hand ends, a short animation plays over the table, which then stays with all
+hands shown; tap **Show results** for the score card. The
 **•••** menu has sound (off by default), **Lock tile order** (on by default:
 your hand stays sorted; turn it off to drag your tiles into any order), the man-tile numeral style and nine color themes (remembered on this device).
 

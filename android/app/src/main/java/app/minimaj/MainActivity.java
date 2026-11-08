@@ -223,7 +223,7 @@ public class MainActivity extends Activity {
             // at a friend's table: back to our own main menu
             new AlertDialog.Builder(this)
                     .setTitle("Leave this table?")
-                    .setMessage("A computer player takes your seat. You can rejoin from the main menu.")
+                    .setMessage("The table keeps your seat for you (the others can vote to let a computer play it). You can rejoin from the main menu.")
                     .setPositiveButton("Leave", (d, w) -> goHome())
                     .setNegativeButton("Cancel", null)
                     .show();
@@ -231,7 +231,7 @@ public class MainActivity extends Activity {
         }
         web.evaluateJavascript("(window.minimajNav && minimajNav.screen()) || ''", (v) -> {
             if (isFinishing() || isDestroyed() || web == null) return; // the answer came too late
-            String screen = v == null ? "" : v.replace("\"", "");
+            String screen = v == null || v.equals("null") ? "" : v.replace("\"", "");
             if (screen.equals("home") || screen.isEmpty()) {
                 new AlertDialog.Builder(this)
                         .setTitle("Exit minimaj?")
@@ -249,7 +249,7 @@ public class MainActivity extends Activity {
             }
             new AlertDialog.Builder(this)
                     .setTitle("Leave the table?")
-                    .setMessage("Keep it running so friends can play on (a computer takes your seat), or stop it and disconnect everyone.")
+                    .setMessage("Keep it running so friends can play on (your seat waits for you, or they vote to let a computer play it), or stop it and disconnect everyone.")
                     .setPositiveButton("Keep running", (d, w) -> leaveTable())
                     .setNeutralButton("Stop table", (d, w) -> {
                         leaveTable();
@@ -266,7 +266,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        main.removeCallbacks(poll);
+        main.removeCallbacksAndMessages(null); // the poll and a pending restart (onServerStopped)
         if (ServerService.onStopped == stoppedListener) ServerService.onStopped = null;
         if (web != null) web.destroy();
         super.onDestroy();

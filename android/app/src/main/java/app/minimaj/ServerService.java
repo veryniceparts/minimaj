@@ -25,6 +25,7 @@ import java.net.NetworkInterface;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Foreground service that runs the Go game server (lib/arm64-v8a/libminimaj.so,
@@ -47,6 +48,15 @@ public class ServerService extends Service {
     static volatile boolean quitApp = false;
 
     private Process process;
+    /**
+     * The last server process started, possibly still shutting down after its
+     * service was destroyed ("Stop table", "Stop server"). Until it exits it holds
+     * port 7777, and a new server would fall back to 7778+: a different origin
+     * for the WebView, so the saved name and settings (localStorage) would be
+     * lost. Main thread only.
+     */
+    private static Process previous;
+    private boolean waitingForPrevious = false;
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -65,7 +75,7 @@ public class ServerService extends Service {
             return START_NOT_STICKY;
         }
         goForeground(port > 0 ? "Running on port " + port : "Starting…");
-        if (process == null) startServer();
+        if (process == null && !waitingForPrevious) startServer();
         return START_NOT_STICKY;
     }
 
@@ -113,6 +123,28 @@ public class ServerService extends Service {
     private void startServer() {
         port = 0;
         error = null;
+        final Process old = previous;
+        if (old != null && old.isAlive()) {
+            waitingForPrevious = true;
+            Thread t = new Thread(() -> {
+                try {
+                    if (!old.waitFor(3, TimeUnit.SECONDS)) {
+                        old.destroyForcibly();
+                        old.waitFor(2, TimeUnit.SECONDS);
+                    }
+                } catch (InterruptedException ignored) {
+                }
+                main.post(() -> {
+                    waitingForPrevious = false;
+                    if (previous == old) previous = null; // never wait on it twice
+                    if (!stopping && process == null) startServer();
+                });
+            }, "minimaj-wait-old");
+            t.setDaemon(true);
+            t.start();
+            return;
+        }
+        previous = null;
         File exe = new File(getApplicationInfo().nativeLibraryDir, "libminimaj.so");
         List<String> cmd = new ArrayList<>();
         cmd.add(exe.getAbsolutePath());
@@ -130,6 +162,7 @@ public class ServerService extends Service {
             pb.environment().put("HOME", getFilesDir().getAbsolutePath());
             pb.environment().put("TMPDIR", getCacheDir().getAbsolutePath());
             process = pb.start();
+            previous = process;
         } catch (Exception e) {
             Log.e(TAG, "cannot start server", e);
             fail("Cannot start the server: " + e.getMessage());
