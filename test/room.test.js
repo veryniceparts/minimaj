@@ -334,6 +334,9 @@ export function runRoomTests() {
       r.msg('b', { t: 'lobby-cmd', cmd: 'reroll' });
       assert.deepEqual([r.last('b', 'error').msg, r.last('b', 'error').fatal], ['No rerolls left', false]);
       assert.deepEqual(an(), a0, 'unchanged over the limit');
+      // "back to lobby" from the lobby itself is a no-op: no fresh rerolls
+      r.msg('a', { t: 'lobby-cmd', cmd: 'lobby' });
+      assert.equal(lob('b').rerollsLeft, 0, 'lobby cmd outside a game must not reset rerolls');
       // junk never throws
       r.msg('b', { t: 'lobby-cmd', cmd: { x: 1 } });
       r.msg('b', { t: 'lobby-cmd' });

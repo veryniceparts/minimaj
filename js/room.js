@@ -262,7 +262,8 @@ export function createRoom(env) {
     } else if (msg.cmd === 'start') {
       if (!game) startGame();
     } else if (msg.cmd === 'lobby') {
-      backToLobby();
+      // only from a game: in the lobby it would hand everyone a fresh set of rerolls
+      if (game) backToLobby();
     } else if (msg.cmd === 'again') {
       // "Play again" on the final standings: same people, fresh seats/dealer.
       if (game && game.phase === 'over') { backToLobby(); startGame(); }
