@@ -280,7 +280,7 @@ function replayIn(el) { el.classList.remove('in'); void el.offsetWidth; el.class
    that player's mascot on every screen (main.js relays them through the session).
    The face variant comes from js/animals.js, the moves and effects from style.css. */
 export const EMOTE_TEXT = { go: 'He he, let\'s go!', hurray: 'Hurray!', sad: 'Aww…', 'think-left': 'Hmm…', 'think-right': 'Hmm…',
-  angry: 'Grr grr… Kono yaro!',
+  angry: 'Kono yaro…',
   // local only (the end-of-hand celebration; the room relays only the five above)
   'pat-left': 'Pat pat', 'pat-right': 'Pat pat' };
 const EMOTE_MS = 1800;
