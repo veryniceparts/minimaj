@@ -29,6 +29,19 @@ export const NET_CONFIG = {
   iceServers: [
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    // Metered TURN relay (free plan): gets players behind strict networks in.
+    // These credentials are public by nature (every browser needs them); if
+    // they get abused, reset them in the Metered dashboard and update here.
+    {
+      urls: [
+        'turn:global.relay.metered.ca:80',
+        'turn:global.relay.metered.ca:80?transport=tcp',
+        'turn:global.relay.metered.ca:443',
+        'turns:global.relay.metered.ca:443?transport=tcp',
+      ],
+      username: 'a4d5ff1c70cd0caf6b8fdaab',
+      credential: 'JjC/DXtJJag/wpGf',
+    },
   ],
   iceUrl: '',
   peer: {},
