@@ -914,11 +914,11 @@ summary { cursor: pointer; font-weight: 600; }
 /* mascot emotes (ui.js playEmoteOn): .emo .emo-<kind> on a mascot box for 1.8 s, on
    every screen. The face variant is a group from js/animals.js; the moves are keyframes
    on the body (.bd), ears and effects; a bubble says it in words. --es: mascot size. */
-.an .eh, .an .ex, .an .es, .an .lkl, .an .lkr { display: none; }
+.an .eh, .an .ex, .an .es, .an .lkl, .an .lkr, .an .ea { display: none; }
 .emo .an .eo { display: none; }
 .emo.emo-go .an .eh, .emo.emo-hurray .an .ex, .emo.emo-sad .an .es,
 .emo.emo-think-left .an .lkl, .emo.emo-think-right .an .lkr,
-.emo.emo-pat-left .an .lkl, .emo.emo-pat-right .an .lkr { display: inline; }
+.emo.emo-pat-left .an .lkl, .emo.emo-pat-right .an .lkr, .emo.emo-angry .an .ea { display: inline; }
 .ani { --es: var(--as); }
 .ani.emo { z-index: 4; }
 
@@ -968,6 +968,19 @@ summary { cursor: pointer; font-weight: 600; }
 .emo-sad .tear { animation: emo-tear 1.6s ease-in .12s both; }
 .emo-think-left .bd { animation: emo-think-l 1.8s var(--ease-out) forwards; }
 .emo-think-right .bd { animation: emo-think-r 1.8s var(--ease-out) forwards; }
+/* angry (swipe right): stomp and shake, ears pinned back, an anger mark and steam */
+.emo-angry .bd { animation: emo-angry 1.6s ease-in-out; }
+.emo-angry .ear { animation: emo-ear-back 1.6s ease-in-out; }
+.emo-angry .ear.er { animation-name: emo-ear-back-r; }
+@keyframes emo-angry {
+  0%, 100% { transform: none; } 10% { transform: translateY(6%) scale(1.08, .9); }
+  18% { transform: translateX(-5%) rotate(-5deg); } 26% { transform: translateX(5%) rotate(5deg); }
+  34% { transform: translateX(-5%) rotate(-5deg); } 42% { transform: translateX(5%) rotate(5deg); }
+  50% { transform: translateY(6%) scale(1.08, .9); } 58% { transform: translateX(-4%) rotate(-4deg); }
+  66% { transform: translateX(4%) rotate(4deg); } 76% { transform: translateX(-2%) rotate(-2deg); } 88% { transform: none; }
+}
+@keyframes emo-ear-back { 0%, 100% { transform: none; } 12%, 85% { transform: rotate(-24deg) scaleY(.85); } }
+@keyframes emo-ear-back-r { 0%, 100% { transform: none; } 12%, 85% { transform: rotate(24deg) scaleY(.85); } }
 /* local only (end-of-hand celebration): lean toward the loser and pat-pat, with hearts */
 .emo-pat-left .bd { animation: emo-pat-l 1.8s ease-in-out forwards; }
 .emo-pat-right .bd { animation: emo-pat-r 1.8s ease-in-out forwards; }
@@ -1066,6 +1079,14 @@ summary { cursor: pointer; font-weight: 600; }
 }
 .emo-think-left .emo-fx .qm { left: -14%; }
 .emo-think-right .emo-fx .qm { right: -14%; }
+.emo-fx .vein { right: -16%; top: -18%; width: 40%; height: 40%; animation: emo-vein 1.6s var(--ease-pop) .1s both; }
+.emo-fx .vein svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.emo-fx .vein path { fill: none; stroke: #ff5a6e; stroke-width: 2.8; stroke-linecap: round; filter: drop-shadow(0 1px 0 rgba(59, 47, 69, .6)); }
+@keyframes emo-vein { 0% { opacity: 0; transform: scale(.2); } 18% { opacity: 1; transform: scale(1.15); } 30%, 50%, 70% { transform: scale(.9); } 40%, 60% { transform: scale(1.12); } 88% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1); } }
+.emo-fx .puff { top: 2%; width: 22%; height: 22%; border-radius: 50%; background: rgba(255, 255, 255, .85); animation: emo-puff 1.1s ease-out .35s both; }
+.emo-fx .puff:nth-of-type(2) { left: -12%; --dx: -60%; }
+.emo-fx .puff:nth-of-type(3) { right: -12%; --dx: 60%; animation-delay: .75s; }
+@keyframes emo-puff { 0% { opacity: 0; transform: scale(.3); } 25% { opacity: .9; } 100% { opacity: 0; transform: translate(var(--dx), -140%) scale(1.4); } }
 @keyframes emo-qm { 0% { opacity: 0; transform: scale(.2) rotate(-20deg); } 20% { opacity: 1; transform: scale(1.1) rotate(8deg); } 35%, 55% { transform: rotate(-6deg); } 45%, 65% { transform: rotate(6deg); } 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 /* the words: a small bubble on the free side of the mascot (away from the ponds) */
 .bub {

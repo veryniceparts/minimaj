@@ -16,7 +16,8 @@ const ol = (c, w = 2.2) => ` stroke="${c}" stroke-width="${w}" stroke-linejoin="
 // iris: coloured eyes (e.g. a black cat's gold eyes) — implies light-style eyes
 // Besides the open eyes (.eo) every animal gets the face variants the emotes switch to
 // (CSS shows one at a time): .eh happy ^^, .ex excited > <, .es sad (droopy eyes looking
-// down, worried brows, a tear), .lkl / .lkr looking up to the left / right.
+// down, worried brows, a tear), .lkl / .lkr looking up to the left / right, .ea angry
+// (eyes under brows slanted down toward the middle).
 function eyes({ dx = 7, y = 36, r = 2.6, light = false, iris = '' } = {}) {
   const L = 32 - dx, R = 32 + dx;
   if (iris) light = true;
@@ -31,11 +32,14 @@ function eyes({ dx = 7, y = 36, r = 2.6, light = false, iris = '' } = {}) {
   const squeeze = (x, s) => line(`M${x - s * r * 0.9} ${y - r * 0.85}L${x + s * r * 0.85} ${y}L${x - s * r * 0.9} ${y + r * 0.85}`, c, 1.8);
   // worried brow: the inner end (towards the middle) higher
   const brow = (x, s) => line(`M${x - s * r * 1.05} ${y - r * 1.55}L${x + s * r * 0.95} ${y - r * 2.15}`, c, 1.4);
+  // angry brow: the inner end (towards the middle) lower
+  const grr = (x, s) => line(`M${x - s * r * 1.2} ${y - r * 2.25}L${x + s * r * 1.05} ${y - r * 1.2}`, c, 1.9);
   const tear = `<path class="tear" d="M${L - r * 0.2} ${y + r * 1.1}q-2.5 4-.15 5.85q2.55 1.65 3.3-1.8q.15-1.8-3.15-4.05Z" fill="#8fd3ff" stroke="#4fa3d9" stroke-width=".5"/>`;
   return `<g class="eo">${one(L)}${one(R)}</g><g class="eh">${happy(L)}${happy(R)}</g>`
     + `<g class="ex">${squeeze(L, 1)}${squeeze(R, -1)}</g>`
     + `<g class="es">${one(L, 0, 0.8)}${one(R, 0, 0.8)}${brow(L, 1)}${brow(R, -1)}${tear}</g>`
-    + `<g class="lkl">${one(L, -1, -0.6)}${one(R, -1, -0.6)}</g><g class="lkr">${one(L, 1, -0.6)}${one(R, 1, -0.6)}</g>`;
+    + `<g class="lkl">${one(L, -1, -0.6)}${one(R, -1, -0.6)}</g><g class="lkr">${one(L, 1, -0.6)}${one(R, 1, -0.6)}</g>`
+    + `<g class="ea">${one(L, 0.35, 0.3)}${one(R, -0.35, 0.3)}${grr(L, 1)}${grr(R, -1)}</g>`;
 }
 const cheeks = (y = 42.5, dx = 11.5, op = 0.55) => both(E(32 - dx, y, 3.4, 2.1, '#ff8fab', ` opacity="${op}"`));
 const nose = (y = 41, c = INK, rx = 1.9, ry = 1.35) => E(32, y, rx, ry, c);

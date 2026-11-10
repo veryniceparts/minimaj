@@ -280,6 +280,7 @@ function replayIn(el) { el.classList.remove('in'); void el.offsetWidth; el.class
    that player's mascot on every screen (main.js relays them through the session).
    The face variant comes from js/animals.js, the moves and effects from style.css. */
 export const EMOTE_TEXT = { go: 'He he, let\'s go!', hurray: 'Hurray!', sad: 'Aww…', 'think-left': 'Hmm…', 'think-right': 'Hmm…',
+  angry: 'Grr grr… Kono yaro!',
   // local only (the end-of-hand celebration; the room relays only the five above)
   'pat-left': 'Pat pat', 'pat-right': 'Pat pat' };
 const EMOTE_MS = 1800;
@@ -315,6 +316,8 @@ const EMOTE_FX = {
   sad: rep(3, () => '<i class="gl"></i>'),
   'think-left': '<i class="qm">?</i>',
   'think-right': '<i class="qm">?</i>',
+  // an anger mark (four red curls) by the head, and two puffs of steam
+  angry: '<i class="vein"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8.2Q8.2 8.2 8.2 3M11.8 3Q11.8 8.2 17 8.2M17 11.8Q11.8 11.8 11.8 17M8.2 17Q8.2 11.8 3 11.8"/></svg></i><i class="puff"></i><i class="puff"></i>',
   'pat-left': rep(2, () => `<i class="ht">${HEART}</i>`),
   'pat-right': rep(2, () => `<i class="ht">${HEART}</i>`),
 };
@@ -374,7 +377,7 @@ export function gestureEmote(dx, dy) {
   const ax = Math.abs(dx), ay = Math.abs(dy);
   if (Math.max(ax, ay) < SWIPE_MIN) return ax < TAP_MAX && ay < TAP_MAX ? 'go' : null;
   if (ay >= ax) return dy < 0 ? 'hurray' : 'sad';
-  return dx < 0 ? 'think-left' : 'think-right';
+  return dx < 0 ? 'think-left' : 'angry';
 }
 
 /* End-of-hand celebration: before the result card, a banner on the table ("Tsumo!",
@@ -545,7 +548,7 @@ export class Table {
   }
 
   // Gestures on your own mascot: tap = go, swipe up = hurray, down = sad,
-  // left / right = think-left / think-right. Pointer events, so mouse and touch
+  // left = think-left, right = angry. Pointer events, so mouse and touch
   // both work; touch-action: none (style.css) keeps the page from scrolling.
   setupEmotes() {
     emoteGestures(this.anis[0], (kind) => { if (this.onEmote) this.onEmote(kind); }, this.off.signal);

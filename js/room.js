@@ -43,7 +43,8 @@ const RATE_WINDOW_MS = 1000;
 const RATE_MAX = 60; // messages per window per connection; extra ones are dropped
 
 // Mascot emotes (a tap or swipe on your own mascot), shown to everyone at the table.
-export const EMOTES = ['go', 'hurray', 'sad', 'think-left', 'think-right'];
+// 'think-right' stays for older clients; a swipe right now sends 'angry'
+export const EMOTES = ['go', 'hurray', 'sad', 'think-left', 'think-right', 'angry'];
 export const EMOTE_GAP_MS = 1200; // at most one emote per member per 1.2 s ...
 export const EMOTE_BURST = 10; // ... and 10 per 20 s; extra ones are dropped silently
 export const EMOTE_BURST_MS = 20000;
