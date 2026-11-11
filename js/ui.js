@@ -47,11 +47,13 @@ function souSVG(n, red) {
     return svg(`<ellipse cx="50" cy="42" rx="22" ry="26" fill="${C.sou}"/><circle cx="42" cy="35" r="5" fill="#fff"/><path d="M36 66 L50 90 L64 66Z" fill="${C.man}"/>`);
   }
   const h = n === 7 || n === 9 ? 22 : 30;
+  // red sticks as on real tiles: the 5's centre, the 7's top, the 9's centre column; the 6 is all
+  // green, so a red column means 9
   // 8-sou: sticks lean into an "M" over a "W" (traditional), so it can't be mistaken for 6-sou
   const SOU8_TILT = [-22, 22, -22, 22, 22, -22, 22, -22];
   return svg(SOU[n].map(([x, y], i) => {
     const c = red && n === 5 ? C.red
-      : (n === 9 && i % 3 === 1) || (n === 7 && i === 0) || (n === 5 && i === 2) || (n === 6 && (i === 1 || i === 4)) ? C.man : C.sou;
+      : (n === 9 && i % 3 === 1) || (n === 7 && i === 0) || (n === 5 && i === 2) ? C.man : C.sou;
     const stick = `<rect x="${x - 8}" y="${y - h / 2}" width="16" height="${h}" rx="8" fill="${c}"/><rect x="${x - 9}" y="${y - 1.6}" width="18" height="3.2" rx="1.6" fill="${C.tile}" opacity=".85"/>`;
     return n === 8 ? `<g transform="rotate(${SOU8_TILT[i]} ${x} ${y})">${stick}</g>` : stick;
   }).join(''));
