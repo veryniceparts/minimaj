@@ -36,6 +36,13 @@ Everyone at a table needs the newest version (protocol 2): an older app or page
 can't join a newer table, or the other way round. The error says who must
 reload the page or update the app.
 
+**Is my APK genuine?** Install only builds from this repository's Actions or
+Releases, never a forwarded file. Every official APK is signed with the same
+key; check it with `apksigner verify --print-certs minimaj-android-arm64.apk`.
+The signer's SHA-256 must be
+`45:2A:87:43:8E:E6:09:FE:FC:1B:49:0B:EB:2C:5A:38:F1:5B:BF:E8:4A:54:8F:93:A2:EF:7D:5A:7C:84:00:E7`.
+Android also refuses to update minimaj with an APK signed by any other key.
+
 ## Play
 
 **With the app.** Start minimaj. On a computer it opens your browser at

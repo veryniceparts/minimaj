@@ -24,6 +24,30 @@ const SIGNAL_TRIES = 3; // online host: room-server failures before giving up on
 const RECLAIM_MS = 60000; // online host after a reload: keep asking for the old code this long
 const RECLAIM_EVERY_MS = 3000;
 const HOST_RECONNECT_MS = [1000, 2000, 4000, 8000, 15000];
+
+// A view comes from the host, which may be another player's modified browser: force
+// the numbers the UI draws to be numbers in range, and known words to known words, so
+// nothing from it can turn into markup or freeze the page (the UI escapes text too).
+const int = (x, lo, hi) => Math.min(hi, Math.max(lo, Math.trunc(Number(x)) || 0));
+export function saneView(v) {
+  for (const k of ['seat', 'dealer', 'turn']) v[k] = int(v[k], 0, 3);
+  for (const k of ['round', 'kyoku']) v[k] = int(v[k], 0, 3);
+  for (const k of ['honba', 'sticks']) v[k] = int(v[k], 0, 99);
+  v.wall = int(v.wall, 0, 136);
+  if (!Array.isArray(v.players) || v.players.length !== 4) v.players = [0, 1, 2, 3].map(() => ({}));
+  for (const p of v.players) {
+    if (!p || typeof p !== 'object') continue;
+    p.handCount = int(p.handCount, 0, 14);
+    p.score = int(p.score, -1e7, 1e7);
+  }
+  const r = v.result;
+  if (r && typeof r === 'object') {
+    r.type = r.type === 'tsumo' || r.type === 'ron' ? r.type : 'draw';
+    r.honba = int(r.honba, 0, 99);
+    r.sticks = int(r.sticks, 0, 99);
+  }
+  return v;
+}
 const ICE_TIMEOUT_MS = 4000;
 const ICE_CACHE_MS = 10 * 60 * 1000;
 
@@ -238,10 +262,10 @@ export function createSession(opts, handlers) {
       gotIn();
       isHost = !!msg.lobby.isHost;
       call('onLobby', { ...msg.lobby, mode, code, joinUrl: joinUrl(), lanUrls: mode === 'lan' ? ((info && info.lanUrls) || []) : [] });
-    } else if (msg.t === 'view' && msg.view) {
+    } else if (msg.t === 'view' && msg.view && typeof msg.view === 'object') {
       gotIn();
       isHost = !!msg.view.isHost;
-      call('onView', msg.view);
+      call('onView', saneView(msg.view));
     } else if (msg.t === 'emote') {
       if (EMOTES.indexOf(msg.e) >= 0 && Number.isInteger(msg.seat)) {
         const ev = { seat: msg.seat, e: msg.e, n: typeof msg.n === 'number' ? msg.n : 0 };

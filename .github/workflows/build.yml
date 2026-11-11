@@ -29,7 +29,10 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # the newest 1.26 patch release (security fixes in the standard library),
+          # not the exact minimum version named in go.mod
+          go-version: '1.26.x'
+          check-latest: true
       - name: Go tests
         run: |
           go vet ./...
@@ -122,10 +125,10 @@ jobs:
           fi
           ks="$RUNNER_TEMP/minimaj.keystore"
           printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$ks"
-          gradle -p android assembleDebug -PversionName="$v" -PversionCode="${GITHUB_RUN_NUMBER}" -PminimajKeystore="$ks"
+          gradle -p android assembleRelease -PversionName="$v" -PversionCode="${GITHUB_RUN_NUMBER}" -PminimajKeystore="$ks"
           rm -f "$ks"
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/minimaj-android-arm64.apk
+          cp android/app/build/outputs/apk/release/app-release.apk dist/minimaj-android-arm64.apk
           ls -l dist
       - name: Check APK signing key (updates must keep the same key)
         run: |

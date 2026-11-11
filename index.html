@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- only this site's own script files may run: injected markup (inline handlers, inline scripts) can't run code -->
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>minimaj</title>
   <meta name="description" content="Minimal riichi mahjong for 1-4 players. Play on your local network or online with friends; empty seats are filled by computer players.">
@@ -16,7 +18,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="minimaj">
   <link rel="stylesheet" href="style.css">
-  <script>try{var t=localStorage.getItem('minimaj-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <script src="js/theme.js"></script>
 </head>
 <body>
   <main id="app" class="home"></main>

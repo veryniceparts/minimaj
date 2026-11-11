@@ -35,8 +35,11 @@ android {
         getByName("debug") {
             if (minimajKeystore != null) signingConfig = signingConfigs.getByName("minimaj")
         }
+        // CI ships the release build: not debuggable, so nobody with USB access can
+        // attach a debugger, read the app's data with run-as or inspect the WebView.
         release {
             isMinifyEnabled = false
+            if (minimajKeystore != null) signingConfig = signingConfigs.getByName("minimaj")
         }
     }
 

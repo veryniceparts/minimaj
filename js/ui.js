@@ -242,7 +242,7 @@ export function resultHTML(v) {
   } else {
     const w = v.players[r.winner];
     const how = r.type === 'tsumo' ? (r.winner === v.seat ? 'you won!' : '') : `from ${esc(v.players[r.from].name)}`;
-    body = `<h2><span class="badge ${r.type}">${r.type === 'tsumo' ? 'Tsumo' : 'Ron'}</span> ${esc(w.name)} <small>${how}</small></h2>
+    body = `<h2><span class="badge ${r.type === 'tsumo' ? 'tsumo' : 'ron'}">${r.type === 'tsumo' ? 'Tsumo' : 'Ron'}</span> ${esc(w.name)} <small>${how}</small></h2>
       <div class="rhand">${r.hand.map((id) => tileHTML(id, '', ds)).join('')}<span class="gap"></span>${tileHTML(r.winTile, 'win', ds)}
         ${r.melds.map((m) => meldHTML(m, r.winner, ds)).join('')}</div>
       <div class="indic">Dora ${r.dora.map((id) => tileHTML(id)).join('')}${r.ura.length ? `<span class="sep"></span>Ura ${r.ura.map((id) => tileHTML(id)).join('')}` : ''}</div>
@@ -436,7 +436,7 @@ function celebHTML(v) {
   });
   const from = r.type === 'ron' ? `<span class="cb-from">from ${esc(v.players[r.from].name)}</span>` : '';
   const ani = w.animal != null ? `<span class="cb-ani">${animalSVG(w.animal)}</span>` : '';
-  return `<div class="cb win ${r.type}${big}"><div class="cb-dim" aria-hidden="true"></div>
+  return `<div class="cb win ${r.type === 'tsumo' ? 'tsumo' : 'ron'}${big}"><div class="cb-dim" aria-hidden="true"></div>
     ${big ? '<div class="cb-rays" aria-hidden="true"></div>' : ''}<div class="cb-glow" aria-hidden="true"></div>
     <div class="cb-conf" aria-hidden="true">${conf}</div><div class="cb-stars" aria-hidden="true">${stars}</div>
     <div class="cb-banner">
@@ -814,7 +814,7 @@ export class Table {
 
   patchCenter(v) {
     setText(this.el.round, roundName(v));
-    const sub = `${v.wall} left${sticksHTML(v)}`;
+    const sub = `${Math.max(0, v.wall | 0)} left${sticksHTML(v)}`;
     if (this.el.sub._h !== sub) { this.el.sub._h = sub; this.el.sub.innerHTML = sub; }
     const doraKey = v.dora.join(',');
     if (this.el.dora._k !== doraKey) {

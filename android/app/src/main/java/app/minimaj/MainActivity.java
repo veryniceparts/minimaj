@@ -67,11 +67,18 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
+                String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase(java.util.Locale.ROOT);
+                boolean isWeb = scheme.equals("http") || scheme.equals("https");
                 // our own table and friends' tables on the local network stay in the app
-                if (isLocalHost(u.getHost())) return false;
-                try {
-                    startActivity(new Intent(Intent.ACTION_VIEW, u)); // other links: real browser
-                } catch (Exception ignored) {
+                if (isWeb && isLocalHost(u.getHost())) return false;
+                // Other web links open in the real browser, but only when the player tapped
+                // one: a page can't send them to other apps, the store, the dialer or
+                // anywhere else on its own, and non-web schemes are never handed out.
+                if (isWeb && req.hasGesture()) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, u));
+                    } catch (Exception ignored) {
+                    }
                 }
                 return true;
             }

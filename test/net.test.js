@@ -5,7 +5,17 @@ import { installFakeClock } from './fakeclock.js';
 import { createRoom } from '../js/room.js';
 
 export async function runNetTests() {
-  const { createSession, normCode } = await import('../js/net.js');
+  const { createSession, normCode, saneView } = await import('../js/net.js');
+  // a hostile host's view: markup in numbers and the result type is neutralized
+  {
+    const x = '"><img src=x onerror=alert(1)>';
+    const v = saneView({ seat: x, wall: x, honba: 1e9, sticks: -5, players: [{ handCount: 1e9, score: x }, {}, {}, {}],
+      result: { type: x, honba: x, sticks: 3 } });
+    assert.deepEqual([v.seat, v.wall, v.honba, v.sticks, v.players[0].handCount, v.players[0].score], [0, 0, 99, 0, 14, 0]);
+    assert.deepEqual([v.result.type, v.result.honba, v.result.sticks], ['draw', 0, 3]);
+    assert.equal(saneView({ players: 'x' }).players.length, 4);
+    assert.equal(saneView({ wall: 70, result: { type: 'tsumo' } }).result.type, 'tsumo');
+  }
   const clock = installFakeClock();
   const realNow = Date.now;
   Date.now = clock.now;
