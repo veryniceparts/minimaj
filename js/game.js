@@ -495,6 +495,7 @@ export class Game {
       points = `${pay}`;
     }
     deltas[seat] += this.sticks * 1000;
+    const sticksWon = this.sticks;
     this.sticks = 0;
     this.players.forEach((q, i) => { q.score += deltas[i]; });
     const hand = tsumo ? p.hand.filter((id) => id !== tileId) : p.hand.slice();
@@ -504,6 +505,8 @@ export class Game {
       yaku: w.yaku, han: w.han, fu: w.fu, yakuman: w.yakuman, limit: w.limit, points,
       hand: sortIds(hand), winTile: tileId, melds: p.melds,
       dora: this.doraIndicators(), ura: p.riichi ? this.dead.slice(5, 5 + this.doraCount) : [],
+      // what came on top of the hand's points: honba (300 each, in all) and riichi sticks (1000 each)
+      honba: this.honba, sticks: sticksWon,
       deltas,
     };
     this.endRound(isDealer);

@@ -284,6 +284,7 @@ function scenarioTests(t) {
     assert.equal(g.result.type, 'ron');
     assert.equal(g.result.han, 2); assert.equal(g.result.fu, 30);
     assert.deepEqual(g.result.deltas, [-2600, 3600, 0, 0]);
+    assert.deepEqual([g.result.honba, g.result.sticks], [2, 1], 'the result card shows them');
     assert.equal(g.sticks, 0);
     assert.equal(total(g), 100000);
     assert.deepEqual(g.pendingNext, { round: 0, kyoku: 1, honba: 0 });

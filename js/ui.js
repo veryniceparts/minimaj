@@ -189,6 +189,24 @@ const PEEK_BTN = '<button class="act ghost peekbtn" data-ui="close" title="Close
 
 const miniAnimal = (p) => (p && p.animal != null ? `<span class="ani">${animalSVG(p.animal)}</span>` : '');
 
+// Honba and riichi sticks drawn like on a real table: a 100-point stick (a column of
+// dots) per honba, a 1000-point stick (one red dot) per riichi deposit.
+const STICK = { honba: '<i class="stk s100" aria-hidden="true"></i>', riichi: '<i class="stk s1000" aria-hidden="true"></i>' };
+const stickGrp = (kind, n, pts) => `<span class="grp">${kind} ${STICK[kind]}${n > 1 ? `×${n}` : ''}${pts ? ` ${pts}` : ''}</span>`;
+// in the center box during a hand: only the sticks on the table
+function sticksHTML(v) {
+  const honba = Math.max(0, v.honba | 0), sticks = Math.max(0, v.sticks | 0);
+  if (!honba && !sticks) return '';
+  const g = (kind, n) => `<span class="grp" title="${n} ${kind}">${STICK[kind]}×${n}</span>`;
+  return `<span class="sticks">${honba ? g('honba', honba) : ''}${sticks ? g('riichi', sticks) : ''}</span>`;
+}
+// on the result card, after the hand's points: what the winner got on top
+function extrasHTML(r) {
+  const honba = Math.max(0, r.honba | 0), sticks = Math.max(0, r.sticks | 0);
+  if (!honba && !sticks) return '';
+  return `<span class="extra">${honba ? stickGrp('honba', honba, 300 * honba) : ''}${sticks ? stickGrp('riichi', sticks, 1000 * sticks) : ''}</span>`;
+}
+
 // One line under the scores: what comes next, or why the game is over.
 function nextLine(v, r) {
   if (r.gameOver) {
@@ -227,7 +245,7 @@ export function resultHTML(v) {
         ${r.melds.map((m) => meldHTML(m, r.winner, ds)).join('')}</div>
       <div class="indic">Dora ${r.dora.map((id) => tileHTML(id)).join('')}${r.ura.length ? `<span class="sep"></span>Ura ${r.ura.map((id) => tileHTML(id)).join('')}` : ''}</div>
       <ul class="yaku${r.yaku.length > 3 ? ' two' : ''}">${r.yaku.map(([n, h]) => `<li><span>${esc(n)}</span><span>${r.yakuman ? '' : esc(h) + ' han'}</span></li>`).join('')}</ul>
-      <div class="total">${r.yakuman ? '' : `${esc(r.han)} han ${esc(r.fu)} fu`} ${r.limit ? `<b>${esc(r.limit)}</b>` : ''} · <b>${esc(r.points)}</b></div>`;
+      <div class="total">${r.yakuman ? '' : `${esc(r.han)} han ${esc(r.fu)} fu`} ${r.limit ? `<b>${esc(r.limit)}</b>` : ''} · <b>${esc(r.points)}</b>${extrasHTML(r)}</div>`;
   }
   const readyNames = v.ready.map((s) => esc(v.players[s].name));
   const iAmReady = v.ready.includes(v.seat);
@@ -794,8 +812,8 @@ export class Table {
 
   patchCenter(v) {
     setText(this.el.round, roundName(v));
-    const extra = [v.honba ? `${v.honba} honba` : '', v.sticks ? `${v.sticks} riichi` : ''].filter(Boolean).join(' · ');
-    setText(this.el.sub, `${v.wall} left${extra ? `\n${extra}` : ''}`);
+    const sub = `${v.wall} left${sticksHTML(v)}`;
+    if (this.el.sub._h !== sub) { this.el.sub._h = sub; this.el.sub.innerHTML = sub; }
     const doraKey = v.dora.join(',');
     if (this.el.dora._k !== doraKey) {
       this.el.dora._k = doraKey;

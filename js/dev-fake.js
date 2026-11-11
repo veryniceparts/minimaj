@@ -99,6 +99,9 @@ export function createSession(opts, h) {
       if (+q.get('offline') >= 1 && +q.get('offline') <= 3) { const p = g.players[+q.get('offline')]; p.kind = 'human'; p.away = 'gone'; }
       // ?sleep=3: that seat's mascot sleeps
       if (+q.get('sleep') >= 1 && +q.get('sleep') <= 3) g.players[+q.get('sleep')].sleep = true;
+      // ?honba=1&sticks=3: start with honba and riichi sticks on the table (screenshots)
+      if (+q.get('honba') > 0) g.honba = +q.get('honba');
+      if (+q.get('sticks') > 0) g.sticks = +q.get('sticks');
       g.start();
     },
     setSettings(s) { if (closed) return; settings = { ...settings, ...s }; h.onLobby(lobby()); },

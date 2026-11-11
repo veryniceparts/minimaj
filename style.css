@@ -415,6 +415,18 @@ summary { cursor: pointer; font-weight: 600; }
 .center .round { font: 800 max(13px, calc(var(--S) * .034))/1.1 var(--round); color: var(--accent); }
 .center .sub { color: var(--muted); font-size: max(8px, calc(var(--S) * .015)); line-height: 1.25; white-space: pre-line; margin: calc(var(--S) * .004) 0 calc(var(--S) * .01); }
 .center .sub::first-line { font-size: max(9px, calc(var(--S) * .018)); }
+/* honba and riichi sticks (ui.js sticksHTML / extrasHTML): upright, like on a table */
+.stk { position: relative; display: inline-block; flex: none; width: 5px; height: 16px; border-radius: 3px; background: #fdf6ee; box-shadow: 1px 0 0 rgba(0, 0, 0, .35); vertical-align: middle; }
+.stk.s1000::after { content: ""; position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; border-radius: 50%; background: #e2445c; }
+.stk.s100::after {
+  content: ""; position: absolute; top: 3px; bottom: 3px; left: 50%; width: 2px; margin-left: -1px;
+  background: radial-gradient(circle, #3b2f45 45%, transparent 50%) 0 0 / 2px 4px repeat-y;
+}
+.center .sticks { display: flex; justify-content: center; align-items: center; gap: calc(var(--S) * .02); margin-top: calc(var(--S) * .006); font-weight: 700; }
+.center .sticks .grp { display: inline-flex; align-items: center; gap: 3px; }
+.center .sticks .stk { width: max(4px, calc(var(--S) * .009)); height: max(14px, calc(var(--S) * .036)); }
+.total .extra { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; margin-left: 10px; font-size: 14px; color: var(--muted); vertical-align: 2px; }
+.total .extra .grp { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
 .center .dora { display: flex; }
 .center .dora .tile { --w: calc(var(--S) * .03); }
 
