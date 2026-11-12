@@ -622,19 +622,54 @@ export class Table {
   wander() {
     if (this.off.signal.aborted || document.hidden) return;
     const now = Date.now();
+    let obstacles = null; // measured once per tick, only when a mascot needs them
+    const blocked = (rect) => {
+      if (!obstacles) obstacles = this.obstacleRects();
+      if (rect.left < obstacles.board.left + 2 || rect.right > obstacles.board.right - 2
+        || rect.top < obstacles.board.top + 2 || rect.bottom > obstacles.board.bottom - 2) return true;
+      const m = 3; // keep a little gap
+      return obstacles.list.some((o) => rect.left < o.right + m && rect.right > o.left - m && rect.top < o.bottom + m && rect.bottom > o.top - m);
+    };
     this.anis.forEach((el, r) => {
       const busy = !el.firstChild || el._away || el._emo || this.celeb || reduceMotion.matches;
       if (busy) { if ((el._dx || el._dy) && !el._emo) this.walkTo(r, 0, 0); return; }
+      const cx = el._dx || 0, cy = el._dy || 0;
+      const box = el.getBoundingClientRect();
+      // where it stands at home (the box minus the current walk offset, also mid-walk)
+      const home = { left: box.left - (el.classList.contains('walk') ? 0 : cx), top: box.top - (el.classList.contains('walk') ? 0 : cy), w: box.width, h: box.height };
+      if (el.classList.contains('walk')) { home.left = el._homeL ?? home.left; home.top = el._homeT ?? home.top; } else { el._homeL = home.left; el._homeT = home.top; }
+      const at = (dx, dy) => ({ left: home.left + dx, top: home.top + dy, right: home.left + dx + home.w, bottom: home.top + dy + home.h });
+      // a new discard or meld landed where it stands: step back home
+      if ((cx || cy) && !el.classList.contains('walk') && blocked(at(cx, cy))) { this.walkTo(r, 0, 0); return; }
       if (now - this.lastAct[r] < WANDER_MS || now < (el._next || 0)) return;
       el._next = now + WALK_MS + 1200 + Math.random() * 3200;
-      // a spot in the free corner of the felt, away from the center box (a0 bottom-left,
-      // a1 bottom-right, a2 top-right, a3 top-left), at most a mascot or so away;
       // sometimes back home for a while
-      if (Math.random() < 0.25) { this.walkTo(r, 0, 0); return; }
+      if (Math.random() < 0.25) { if (cx || cy) this.walkTo(r, 0, 0); return; }
+      // a spot in the free corner of the felt, away from the center box (a0 bottom-left,
+      // a1 bottom-right, a2 top-right, a3 top-left): only where the whole walk there
+      // stays clear of tiles, name plates, numbers and buttons
       const [sx, sy] = WALK_DIR[r];
-      const R = el.offsetWidth * 1.1;
-      this.walkTo(r, sx * R * (0.2 + 0.8 * Math.random()), sy * R * 0.9 * Math.random());
+      const R = home.w * 1.1;
+      for (let i = 0; i < 10; i++) {
+        const dx = sx * R * (0.2 + 0.8 * Math.random()), dy = sy * R * 0.9 * Math.random();
+        let ok = true;
+        for (let k = 1; k <= 6 && ok; k++) { const f = k / 6; ok = !blocked(at(cx + (dx - cx) * f, cy + (dy - cy) * f)); }
+        if (ok) { this.walkTo(r, dx, dy); return; }
+      }
+      if (cx || cy) this.walkTo(r, 0, 0); // no free spot right now
     });
+  }
+
+  // everything a wandering mascot must not step on: tiles, plates, text, buttons
+  obstacleRects() {
+    const list = [];
+    for (const e of this.root.querySelectorAll('.pond .tile, .backs .tile, .melds .tile, #hand .tile, .center, .info, #hint, #actions .act, #announce > *')) {
+      if (!e.offsetParent) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width && r.height) list.push(r);
+    }
+    const bd = this.root.querySelector('#board');
+    return { list, board: bd ? bd.getBoundingClientRect() : { left: -1e9, top: -1e9, right: 1e9, bottom: 1e9 } };
   }
 
   playEmote(r, kind, text) {
