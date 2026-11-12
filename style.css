@@ -934,22 +934,15 @@ summary { cursor: pointer; font-weight: 600; }
 .ani { --es: var(--as); }
 .ani.emo { z-index: 4; }
 
-/* away mascots (ui.js setAway). .gone: a friend lost their connection; the mascot
-   sinks behind two tile backs and peeks over them now and then. .sleep: the table has
-   waited on them for 45 s: eyes shut, slow breathing, z's float up. */
-.ani svg, .seats .mav svg { transition: transform .6s var(--ease-out), clip-path .6s var(--ease-out), opacity .6s; }
-.gone svg { transform: translateY(12%); clip-path: inset(0 0 8% 0); opacity: .9; animation: ani-peek 7s ease-in-out 1.2s infinite; }
-@keyframes ani-peek { 0%, 62%, 100% { transform: translateY(12%); } 70%, 84% { transform: translateY(2%); } }
-.hide {
-  position: absolute; left: -14%; right: -14%; top: 78%; height: 42%; display: flex; justify-content: center; gap: 5%;
-  pointer-events: none; animation: hide-in .5s var(--ease-pop) both;
-}
-.hide i {
-  flex: 0 0 46%; border-radius: 16% / 13%;
-  background: linear-gradient(180deg, var(--back) 0 72%, var(--back-2) 72%);
-  box-shadow: 0 1px 2px rgba(var(--sh), .4), inset 0 1px 0 rgba(255, 255, 255, .35);
-}
-@keyframes hide-in { from { transform: translateY(40%); opacity: 0; } }
+/* sleeping mascots (ui.js setAway): a friend who lost their connection, or one the
+   table has waited on for 45 s: eyes shut, slow breathing, z's float up. */
+.ani svg, .seats .mav svg { transition: transform .6s var(--ease-out), opacity .6s, scale .25s; }
+/* wandering (ui.js wander): an idle mascot strolls around its free corner of the felt,
+   facing where it goes, with a little bounce in its step */
+.ani { transition: translate 1.6s ease-in-out; }
+.ani svg { scale: var(--face, 1) 1; }
+.ani.walk .bd { animation: ani-step .4s ease-in-out 4 alternate; }
+@keyframes ani-step { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-9%) rotate(4deg); } }
 .sleep .an .eo { transform: scaleY(.14); }
 .sleep .an .eo circle[fill="#fff"] { display: none; }
 .sleep .bd { animation: ani-breathe 3.4s ease-in-out infinite; }
@@ -964,7 +957,6 @@ summary { cursor: pointer; font-weight: 600; }
 .zz i:nth-child(3) { animation-delay: 1.8s; }
 @keyframes zz { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(90%, -170%) scale(1.2); } }
 @media (prefers-reduced-motion: reduce) {
-  .gone svg { animation: none !important; }
   .zz i { animation: none !important; opacity: .85; }
   .zz i:nth-child(2) { transform: translate(55%, -95%) scale(.85); }
   .zz i:nth-child(3) { transform: translate(110%, -190%) scale(.7); }

@@ -13,12 +13,13 @@ There are two ways to play:
   room** and send the 5-letter code or link. Players connect peer-to-peer over
   WebRTC. The public PeerJS server is only used to set up the connection.
 
-If someone drops out, their mascot hides behind two tiles and the table waits
+If someone drops out, their mascot falls asleep and the table waits
 for them: they get their seat back by opening the link again, or just by
 reloading the page. If they don't come back, the others can vote (a majority)
 to let a computer play their seat. Someone the table has waited on for 45
-seconds falls asleep: only their mascot sleeps (nobody plays for them), and a
-touch wakes it.
+seconds falls asleep too: only their mascot sleeps (nobody plays for them), and
+a touch wakes it. Mascots whose player has done nothing for 7 seconds stroll
+around their corner of the table, and walk home when that player plays.
 
 ## Download
 

@@ -306,14 +306,16 @@ export const EMOTE_TEXT = { go: 'He he, let\'s go!', hurray: 'Hurray!', sad: 'Aw
 const EMOTE_MS = 1800;
 const SWIPE_MIN = 24; // px along the dominant axis
 const TAP_MAX = 12; // px: a press that moved less is a tap
+const WANDER_MS = 7000; // a mascot whose player did nothing this long goes for a stroll
+const WALK_MS = 1600; // one walk to a new spot (style.css .ani translate transition)
+const WALK_DIR = [[-1, 1], [1, 1], [1, -1], [-1, -1]]; // away from the center box, per layer
 
-/* Away mascots, from view.players[i]. .gone: a friend lost their connection; the
-   mascot hides behind two tile backs (only the top of the head peeks out). .sleep: the
-   table has waited on them for 45 s (room.js SLEEP_MS); eyes shut, slow breathing,
-   floating z's, until they touch the screen. */
-const AWAY_FX = { gone: '<span class="hide" aria-hidden="true"><i></i><i></i></span>', sleep: '<span class="zz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>' };
-export const awayOf = (p) => (!p ? null : p.away === 'gone' ? 'gone' : p.sleep ? 'sleep' : null);
-// set a mascot box's away state ('gone' | 'sleep' | null): class plus the extra markup
+/* Sleeping mascots, from view.players[i]: a friend who lost their connection
+   (away 'gone'), or one the table has waited on for 45 s (room.js SLEEP_MS). Eyes
+   shut, slow breathing, floating z's, until they are back or touch the screen. */
+const AWAY_FX = { sleep: '<span class="zz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>' };
+export const awayOf = (p) => (!p ? null : p.away === 'gone' || p.sleep ? 'sleep' : null);
+// set a mascot box's away state ('sleep' | null): class plus the extra markup
 export function setAway(el, away) {
   away = AWAY_FX[away] ? away : null;
   if (!el || (el._away || null) === away) return;
@@ -502,6 +504,11 @@ export class Table {
     this.idleTimer = null;
     this.idleEnd = null;
     this.scheduleIdle();
+    // mascots stroll around their empty corner of the felt once their player has done
+    // nothing for WANDER_MS, and walk home when they act or emote (see wander)
+    this.lastAct = [0, 1, 2, 3].map(() => Date.now());
+    this.seatActKey = ['', '', '', '']; // per layer: what last showed that player acting
+    this.walkTimer = setInterval(() => this.wander(), 1000);
     this.onEmote = null; // (kind) => void: set by main.js; your gesture on your mascot
     this.mine = []; // your own emotes played before the room's echo: [{ kind, at }]
     this.setupEmotes();
@@ -530,7 +537,8 @@ export class Table {
     this.off.abort();
     clearTimeout(this.idleTimer);
     clearTimeout(this.idleEnd);
-    for (const el of this.anis) clearTimeout(el._emoT);
+    clearInterval(this.walkTimer);
+    for (const el of this.anis) { clearTimeout(el._emoT); clearTimeout(el._walkT); }
     if (this.celeb) for (const t of this.celeb.timers) clearTimeout(t);
     this.celeb = null;
     this.idleTimer = this.idleEnd = null;
@@ -547,7 +555,7 @@ export class Table {
     clearTimeout(this.idleTimer);
     if (this.off.signal.aborted) return;
     this.idleTimer = setTimeout(() => {
-      if (!reduceMotion.matches && !document.hidden && !this.anis[0]._emo && !this.anis[0]._away) {
+      if (!reduceMotion.matches && !document.hidden && !this.anis[0]._emo && !this.anis[0]._away && !this.anis[0].classList.contains('walk')) {
         const moves = animalMoves(this.anis[0]._k);
         this.animalMove(moves[Math.floor(Math.random() * moves.length)]);
       }
@@ -593,7 +601,44 @@ export class Table {
 
   get emoting() { return !!this.anis[0]._emo; }
 
+  /* ---- wandering: an idle mascot strolls around its empty corner ---- */
+  // the player of layer r did something: their mascot walks back home
+  active(r) {
+    this.lastAct[r] = Date.now();
+    const el = this.anis[r];
+    if (el._dx || el._dy) this.walkTo(r, 0, 0);
+  }
+
+  walkTo(r, dx, dy) {
+    const el = this.anis[r];
+    if (dx !== (el._dx || 0)) el.style.setProperty('--face', dx < (el._dx || 0) ? -1 : 1);
+    el._dx = dx; el._dy = dy;
+    el.style.translate = dx || dy ? `${Math.round(dx)}px ${Math.round(dy)}px` : '';
+    el.classList.add('walk');
+    clearTimeout(el._walkT);
+    el._walkT = setTimeout(() => { el.classList.remove('walk'); if (!el._dx && !el._dy) el.style.removeProperty('--face'); }, WALK_MS);
+  }
+
+  wander() {
+    if (this.off.signal.aborted || document.hidden) return;
+    const now = Date.now();
+    this.anis.forEach((el, r) => {
+      const busy = !el.firstChild || el._away || el._emo || this.celeb || reduceMotion.matches;
+      if (busy) { if ((el._dx || el._dy) && !el._emo) this.walkTo(r, 0, 0); return; }
+      if (now - this.lastAct[r] < WANDER_MS || now < (el._next || 0)) return;
+      el._next = now + WALK_MS + 1200 + Math.random() * 3200;
+      // a spot in the free corner of the felt, away from the center box (a0 bottom-left,
+      // a1 bottom-right, a2 top-right, a3 top-left), at most a mascot or so away;
+      // sometimes back home for a while
+      if (Math.random() < 0.25) { this.walkTo(r, 0, 0); return; }
+      const [sx, sy] = WALK_DIR[r];
+      const R = el.offsetWidth * (r ? 1.7 : 1.1);
+      this.walkTo(r, sx * R * (0.2 + 0.8 * Math.random()), sy * R * 0.9 * Math.random());
+    });
+  }
+
   playEmote(r, kind, text) {
+    this.active(r);
     if (r === 0) { clearTimeout(this.idleEnd); this.anis[0].classList.remove('idle'); }
     playEmoteOn(this.anis[r], kind, text);
   }
@@ -840,6 +885,9 @@ export class Table {
     setText(L.pname, p.name);
     this.patchAnimal(r, p);
     setAway(this.anis[r], awayOf(p));
+    // a discard, a call or a riichi: that player is active (their mascot comes home)
+    const ak = `${v.round}:${v.kyoku}:${v.honba}:${p.discards.length}:${p.melds.length}:${p.riichi ? 1 : 0}:${isTurn ? 1 : 0}`;
+    if (ak !== this.seatActKey[r]) { this.seatActKey[r] = ak; this.active(r); }
 
     const hl = v.claimTile ? v.claimTile.from === s : v.lastDiscard && v.lastDiscard.seat === s;
     const list = [];
