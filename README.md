@@ -66,7 +66,11 @@ in the box, **Join** becomes the highlighted button.
 
 **Online room.** Host the folder as a static site (see below), open it, press
 **Create room**, and share the code or link. The host's tab runs the game, so
-the host should keep it open.
+the host should keep it open. If the host's tab or app does close, the device
+remembers its room code for 6 hours: **Create room** asks for the same code
+again, and typing that code into *Join* reopens the room with you as the host.
+Friends' links keep working and they reconnect to the lobby (a game in
+progress is lost, since it lived in the closed tab).
 
 **Controls.** Click a tile to discard it. On touch screens, tap to lift and tap
 again to discard. Buttons for **Chi / Pon / Kan / Ron / Tsumo / Riichi** appear

@@ -544,10 +544,18 @@ function sessionHandlers(token, opts) {
   return {
     onLobby: (l) => { if (live()) showLobby(l); },
     onView: (v) => { if (live()) renderGame(v); },
-    onError: (msg, fatal) => {
+    onError: (msg, fatal, info) => {
       if (!live()) return;
       if (!fatal) { toast(msg); return; }
       sessionToken = null;
+      // joining a room this device hosted, but nobody hosts it now (the app or tab
+      // was closed): reopen it with the same code, so friends' links work again
+      const nf = info && info.notFound;
+      if (nf && opts.mode === 'online' && !opts.create && net.lastHostedCode && net.lastHostedCode() === nf) {
+        toast(`Room ${nf} was closed: reopening it with you as the host`, 3600);
+        connect({ ...opts, create: true, code: nf });
+        return;
+      }
       auto.clear();
       showHome(msg); // the app's home hosts/joins online rooms too
     },

@@ -65,6 +65,20 @@ export function codeProblem(c) {
 function storageGet(store, k) { try { return window[store].getItem(k); } catch (e) { return null; } }
 function storageSet(store, k, v) { try { window[store].setItem(k, v); } catch (e) { /* ignore */ } }
 
+// The room code this device last hosted (kept on the device, not only in the tab):
+// "Create room" asks for it again, and joining it when nobody hosts it reopens it,
+// so friends' links keep working after the host's app or tab was closed.
+const HOSTED_KEY = 'minimaj-hosted';
+const HOSTED_MS = 6 * 3600 * 1000;
+export function lastHostedCode() {
+  try {
+    const h = JSON.parse(storageGet('localStorage', HOSTED_KEY) || 'null');
+    const c = h && normCode(h.c);
+    return c && !codeProblem(c) && Date.now() - h.at < HOSTED_MS ? c : null;
+  } catch (e) { return null; }
+}
+function rememberHosted(c) { storageSet('localStorage', HOSTED_KEY, JSON.stringify({ c, at: Date.now() })); }
+
 function clientId() {
   let id = storageGet('localStorage', 'minimaj-cid');
   if (!id) {
@@ -219,6 +233,7 @@ export function createSession(opts, handlers) {
   let hostConns = null;
   let selfDeliver = null;
   let hostOpened = false; // the room's code is registered (at least once)
+  let hostedAt = 0; // when the hosted code was last remembered (lastHostedCode)
   let hostRetry = 0; // reconnects to the room server since it was last open
   let hostRetryAt = 0;
   let hostSignalNoted = false;
@@ -306,6 +321,8 @@ export function createSession(opts, handlers) {
     if (stopped) return;
     tickTimer = setTimeout(tick, TICK_MS);
     hostSignalCheck(false);
+    // still hosting: keep the remembered code fresh
+    if (hostOpened && code && Date.now() - hostedAt > 60000) { rememberHosted(code); hostedAt = Date.now(); }
     const t = transport;
     if (!t || connState !== 'open' || stopped) return;
     const now = Date.now();
@@ -400,7 +417,7 @@ export function createSession(opts, handlers) {
     Promise.all([loadPeerJS(), peerOptions()]).then(([, popts]) => {
       if (stopped) return;
       const saved = normCode(storageGet('sessionStorage', 'minimaj-host-code'));
-      const wanted = code || (codeProblem(saved) ? null : saved);
+      const wanted = code || (codeProblem(saved) ? null : saved) || lastHostedCode();
       openHostPeer(popts, wanted, Date.now(), 0, 0);
     }, (e) => fail(e.message));
   }
@@ -447,6 +464,7 @@ export function createSession(opts, handlers) {
       opened = true;
       code = c;
       storageSet('sessionStorage', 'minimaj-host-code', c);
+      rememberHosted(c); hostedAt = Date.now();
       hostOpened = true;
       connectSelf();
     });
@@ -558,7 +576,7 @@ export function createSession(opts, handlers) {
         const type = err && err.type;
         if (type === 'browser-incompatible') { clearTimeout(timer); fail(MSG.browser); return; }
         if (type === 'peer-unavailable') {
-          if (!everOpen) { clearTimeout(timer); fail(MSG.notFound(code)); return; }
+          if (!everOpen) { clearTimeout(timer); call('onError', MSG.notFound(code), true, { notFound: code }); stop(); return; }
           if (tt) { clearTimeout(timer); onDrop(tt, 'The host is away'); }
           return;
         }

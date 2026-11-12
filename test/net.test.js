@@ -72,7 +72,7 @@ export async function runNetTests() {
     const s = createSession({ mode: 'lan', name, info }, {
       onLobby: (l) => { log.lobby = l; },
       onView: (v) => { log.view = v; },
-      onError: (msg, fatal) => log.errors.push([msg, fatal]),
+      onError: (msg, fatal, info) => { log.errors.push([msg, fatal]); if (info && info.notFound) log.notFound = info.notFound; },
       onConn: (st) => log.conn.push(st),
       onStatus: (t) => log.status.push(t),
       onEmote: (e) => log.emotes.push(e),
@@ -298,7 +298,7 @@ async function runOnlineTests() {
     const s = createSession(opts, {
       onLobby: (l) => { log.lobby = l; },
       onView: (v) => { log.view = v; },
-      onError: (msg, fatal) => log.errors.push([msg, fatal]),
+      onError: (msg, fatal, info) => { log.errors.push([msg, fatal]); if (info && info.notFound) log.notFound = info.notFound; },
       onConn: (st) => log.conn.push(st),
       onStatus: (t) => log.status.push(t),
       onEmote: (e) => log.emotes.push(e),
@@ -380,6 +380,27 @@ async function runOnlineTests() {
   assert.equal(H2.log.conn.at(-1), 'open');
   assert.equal(H2.log.errors.length, 0);
   H2.s.close();
+  n++;
+
+  // the host's app or tab was closed (a new tab: no sessionStorage): the code is
+  // remembered on the device, so "Create room" gets the same code back
+  await settle();
+  const { lastHostedCode } = await import('../js/net.js');
+  const H3 = mk({ mode: 'online', name: 'Hana', create: true }, { ...mkWindow(), localStorage: hostWin.localStorage });
+  await settle(200);
+  assert.equal(H3.s.code, oldCode, 'same code after the tab was closed');
+  assert.equal(H3.log.conn.at(-1), 'open');
+  H3.s.close();
+  await settle();
+  // joining that code while nobody hosts it: the error says so (main.js then reopens it)
+  const H4 = mk({ mode: 'online', name: 'Hana', code: oldCode }, { ...mkWindow(), localStorage: hostWin.localStorage });
+  await settle(200);
+  assert.ok(/No room with the code/.test(H4.log.errors[0][0]));
+  assert.equal(H4.log.notFound, oldCode);
+  def('window', { ...mkWindow(), localStorage: hostWin.localStorage });
+  assert.equal(lastHostedCode(), oldCode);
+  def('window', { ...mkWindow() });
+  assert.equal(lastHostedCode(), null, 'another device never hosted it');
   n++;
 
   // no WebRTC at all (some in-app browsers): say so instead of failing oddly
