@@ -611,12 +611,11 @@ export class Table {
 
   walkTo(r, dx, dy) {
     const el = this.anis[r];
-    if (dx !== (el._dx || 0)) el.style.setProperty('--face', dx < (el._dx || 0) ? -1 : 1);
     el._dx = dx; el._dy = dy;
     el.style.translate = dx || dy ? `${Math.round(dx)}px ${Math.round(dy)}px` : '';
     el.classList.add('walk');
     clearTimeout(el._walkT);
-    el._walkT = setTimeout(() => { el.classList.remove('walk'); if (!el._dx && !el._dy) el.style.removeProperty('--face'); }, WALK_MS);
+    el._walkT = setTimeout(() => el.classList.remove('walk'), WALK_MS);
   }
 
   wander() {

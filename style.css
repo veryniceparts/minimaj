@@ -938,13 +938,12 @@ summary { cursor: pointer; font-weight: 600; }
 
 /* sleeping mascots (ui.js setAway): a friend who lost their connection, or one the
    table has waited on for 45 s: eyes shut, slow breathing, z's float up. */
-.ani svg, .seats .mav svg { transition: transform .6s var(--ease-out), opacity .6s, scale .25s; }
-/* wandering (ui.js wander): an idle mascot strolls around its free corner of the felt,
-   facing where it goes, with a little bounce in its step */
+.ani svg, .seats .mav svg { transition: transform .6s var(--ease-out), opacity .6s; }
+/* wandering (ui.js wander): an idle mascot glides around its free corner of the felt,
+   always facing you, with a small soft hop in its step (no flipping or tilting) */
 .ani { transition: translate 1.6s ease-in-out; }
-.ani svg { scale: var(--face, 1) 1; }
 .ani.walk .bd { animation: ani-step .4s ease-in-out 4 alternate; }
-@keyframes ani-step { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-9%) rotate(4deg); } }
+@keyframes ani-step { from { transform: translateY(0); } to { transform: translateY(-6%); } }
 .sleep .an .eo { transform: scaleY(.14); }
 .sleep .an .eo circle[fill="#fff"] { display: none; }
 .sleep .bd { animation: ani-breathe 3.4s ease-in-out infinite; }
