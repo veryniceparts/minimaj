@@ -873,7 +873,9 @@ summary { cursor: pointer; font-weight: 600; }
    pond spans only its own side of the center box. Yours is larger, has idle moves (ui.js)
    and takes gestures (emotes, below); the others are small and move only to emote. */
 .ani {
-  --as: clamp(17px, calc(var(--S) * .058), 26px); --ag: calc(var(--S) * .012);
+  /* --as-me: your mascot's size; the opponents' are 80% of it */
+  --as-me: clamp(40px, calc(var(--S) * .145), 56px);
+  --as: calc(var(--as-me) * .8); --ag: calc(var(--S) * .012);
   --ax: calc(var(--c) / 2 + var(--ag)); --ay: calc(var(--c) / 2 + var(--ag)); --acy: 50%;
   position: absolute; width: var(--as); height: var(--as); pointer-events: none; z-index: 1;
 }
@@ -890,7 +892,7 @@ summary { cursor: pointer; font-weight: 600; }
 .ani .ear.er { transform-origin: 20% 85%; }
 .ani .eo { transform-origin: 50% 50%; }
 .ani.me {
-  --as: clamp(40px, calc(var(--S) * .145), 56px);
+  --as: var(--as-me);
   pointer-events: auto; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
 }
 .ani.me::after {
@@ -901,7 +903,7 @@ summary { cursor: pointer; font-weight: 600; }
   .ani { --acy: var(--cy); }
   /* your pond is wider than the center box here: the bottom corners sit beside it */
   .ani.a0, .ani.a1 { --ax: calc(max(var(--c) / 2, var(--wme) * 4.975) + var(--ag) * 1.6); }
-  .ani.me { --as: clamp(30px, min(calc(var(--S) * .145), calc(var(--vh) - var(--barh) - 4px - var(--cy) - var(--c) / 2 - var(--ag) * 2 - var(--hw) * .24)), 56px); }
+  .ani { --as-me: clamp(30px, min(calc(var(--S) * .145), calc(var(--vh) - var(--barh) - 4px - var(--cy) - var(--c) / 2 - var(--ag) * 2 - var(--hw) * .24)), 56px); }
 }
 .ani.me.idle[data-move="blink"] .eo { animation: ani-blink .5s ease-in-out 2 alternate; }
 .ani.me.idle[data-move="ear"] .ear { animation: ani-ear .32s ease-in-out 4 alternate; }

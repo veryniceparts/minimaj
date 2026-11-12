@@ -632,7 +632,7 @@ export class Table {
       // sometimes back home for a while
       if (Math.random() < 0.25) { this.walkTo(r, 0, 0); return; }
       const [sx, sy] = WALK_DIR[r];
-      const R = el.offsetWidth * (r ? 1.7 : 1.1);
+      const R = el.offsetWidth * 1.1;
       this.walkTo(r, sx * R * (0.2 + 0.8 * Math.random()), sy * R * 0.9 * Math.random());
     });
   }
