@@ -1,4 +1,4 @@
-// 27 animal mascots as inline SVG, one per seat (the room picks them: view.players[i].animal).
+// 31 mascots (27 animals, 4 vegetables) as inline SVG, one per seat (the room picks them: view.players[i].animal).
 // Shared template: a round outlined head on a 64x64 canvas, plus per-animal ears, markings
 // and snout. Groups the CSS animates: .bd (whole body), .ear (each ear), .eo (open eyes,
 // blink) and the face variants of eyes() below, shown during emotes. Markup is cached per animal.
@@ -270,12 +270,47 @@ const DEFS = [
       + P('M29.6 39.4Q32 38 34.4 39.4L32 46Z', '#4a4458')
       + both(E(19, 47, 3.6, 2.2, '#f2c49a', ' opacity=".8"')) + cheeks(42.6, 12, 0.4);
   }],
+  // vegetables: a stem or leaves on top instead of ears
+  ['Eggplant', () => {
+    // nasu: glossy purple, green cap with pointed sepals, short stem
+    const f = '#8e5bb8', d = '#5a347a', g = '#6cbf5a', gd = '#3f7f34';
+    return P('M32 14Q46 14 48.4 30Q52.6 48 44.6 56Q38.6 62 32 62Q25.4 62 19.4 56Q11.4 48 15.6 30Q18 14 32 14Z', f, ol(d))
+      + E(22.6, 38, 2.6, 9, '#b48ad6', ' opacity=".55" transform="rotate(12 22.6 38)"')
+      + P('M30.4 3.6Q32 2.4 33.6 3.6L33.4 13H30.6Z', '#5d8a3a', ol(gd, 1.2))
+      + P('M17.6 22Q22 12.4 32 11.4Q42 12.4 46.4 22Q41.8 19.4 39.4 24Q36 17.6 32 22.6Q28 17.6 24.6 24Q22.2 19.4 17.6 22Z', g, ol(gd, 1.4))
+      + eyes({ light: true, dx: 7.4, y: 38, r: 2.6 }) + mouth(45.4, '#f4e9fb') + cheeks(44.6, 12, 0.6);
+  }],
+  ['Tomato', () => {
+    // round and red, a green star of sepals and a little stem on top
+    const f = '#f2584f', d = '#b3322c', g = '#5fb84e', gd = '#3a7d2f';
+    return E(32, 38, 22.4, 19.6, f, ol(d)) + E(23, 31, 4.6, 3, '#ff9b8f', ' opacity=".7" transform="rotate(-24 23 31)"')
+      + P('M32 15.4L35.4 20.6L42 19.4L37.8 23.6L40.6 28.4L33.8 25.6L32 30L30.2 25.6L23.4 28.4L26.2 23.6L22 19.4L28.6 20.6Z', g, ol(gd, 1.2))
+      + P('M31 9.6Q33.6 8.6 33.4 11L33 17.6H31Z', '#4c8f39', ol(gd, 1))
+      + eyes({ dx: 7.6, y: 38.4, r: 2.6 }) + mouth(45.6) + cheeks(45, 13, 0.55);
+  }],
+  ['Garlic', () => {
+    // a cream bulb with clove lines, a pointed neck and little roots
+    const f = '#fbf3ea', d = '#b89c86', c = '#e2cdb9';
+    return line('M26 57.4l-2 3.2M29.4 58l-.8 3.6M32 58.2v3.8M34.6 58l.8 3.6M38 57.4l2 3.2', '#c9ad92', 1.4)
+      + P('M32 6.6Q34.6 12.6 37.6 17.4Q52.6 23.6 52.4 40.4Q52 57.6 32 58Q12 57.6 11.6 40.4Q11.4 23.6 26.4 17.4Q29.4 12.6 32 6.6Z', f, ol(d))
+      + line('M32 18.6Q22.6 30 24.2 56.4M32 18.6Q41.4 30 39.8 56.4M32 18.6V57.6', c, 1.3)
+      + P('M30.2 10.4Q32 7.4 33.8 10.4L33.2 15.6H30.8Z', '#d9bfe0', ' opacity=".8"')
+      + eyes({ dx: 7.6, y: 38.6, r: 2.5 }) + mouth(45.6) + cheeks(45, 13, 0.6);
+  }],
+  ['Potato', () => {
+    // a lumpy brown spud with a few darker spots
+    const f = '#d9ab72', d = '#9b6c3d', s = '#b8854b';
+    return P('M17 21.6Q29.6 12.4 44.6 17.6Q55 23 53.8 38.4Q52.6 54.4 36.4 56.8Q20 58.6 12.6 46.6Q7.4 32.6 17 21.6Z', f, ol(d))
+      + E(41.6, 24.8, 1.8, 1.2, s) + E(18.6, 31.6, 1.4, 2, s) + E(45.8, 48, 1.6, 1.2, s) + E(23.4, 51.4, 1.4, 1, s)
+      + E(25, 26.4, 5.4, 2.4, '#ecc795', ' opacity=".7" transform="rotate(-18 25 26.4)"')
+      + eyes({ dx: 7.4, y: 37.6, r: 2.5 }) + mouth(44.8) + cheeks(44.2, 13, 0.5);
+  }],
 ];
 
 export const ANIMAL_NAMES = DEFS.map(([n]) => n);
 export const ANIMAL_COUNT = DEFS.length;
 // which idle moves make sense (all have blink/hop/tilt/wag; these also have ears that move)
-const EARLESS = new Set(['Penguin', 'Duck', 'Frog', 'Crocodile', 'Shoebill', 'Moonfish', 'Tit', 'Kingfisher', 'Nuthatch', 'Sparrow']);
+const EARLESS = new Set(['Penguin', 'Duck', 'Frog', 'Crocodile', 'Shoebill', 'Moonfish', 'Tit', 'Kingfisher', 'Nuthatch', 'Sparrow', 'Eggplant', 'Tomato', 'Garlic', 'Potato']);
 export const animalMoves = (i) => (EARLESS.has(ANIMAL_NAMES[i]) ? ['blink', 'hop', 'tilt', 'wag'] : ['blink', 'ear', 'hop', 'tilt', 'wag']);
 
 const cache = new Map();
