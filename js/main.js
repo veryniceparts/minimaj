@@ -48,7 +48,12 @@ let screen = 'home';
 let table = null;
 let view = null;
 let prev = null;      // previous view (for sounds)
-const ui = { riichiMode: false, selected: null, autoKey: null, free: !prefs.locktiles };
+const ui = { riichiMode: false, selected: null, autoKey: null, free: !prefs.locktiles, noCalls: false };
+// "This game" switches in the ••• menu. Never saved: both turn off at the start of
+// every hand (and when a new table opens), so nobody forgets one is on.
+//   noCalls: chi / pon / kan offers are passed for you (ron and tsumo never are)
+//   autoDrop: your drawn tile is discarded for you, unless you could win, riichi or kan
+const play = { noCalls: false, autoDrop: false, hand: null, dropKey: null, passKey: null };
 let sent = null;      // { view, t }: the action already sent for this view (no double submits)
 let startPending = false; // lobby Start pressed, game not shown yet
 let pointerType = 'mouse';
@@ -175,6 +180,8 @@ function setupMenu() {
   btn.innerHTML = ICON;
   btn.hidden = false; // on every screen, so the theme can be changed anytime
   btn.onclick = (e) => { e.stopPropagation(); toggleMenu(); };
+  // the reminder chip ("Auto-drop on"): a tap opens the menu with the switches
+  $('playchip').onclick = (e) => { e.stopPropagation(); toggleMenu(true); };
   document.addEventListener('click', (e) => { if (!$('menu').hidden && !e.target.closest('#menu')) closeMenu(); });
 }
 
@@ -191,7 +198,10 @@ function toggleMenu(force) {
   const sw = (k, label) => `<button data-pref="${k}" class="${prefs[k] ? 'on' : ''}" aria-pressed="${prefs[k]}">${label}<span class="sw"></span></button>`;
   const swatch = ([id, short, full]) => `<button class="thm${id === theme ? ' on' : ''}" data-theme="${id}" role="radio" aria-checked="${id === theme}" aria-label="${full}" title="${full}">`
     + `<span class="sf"><i class="b"></i><i class="f"></i><i class="a"></i></span><span class="nm">${short}</span></button>`;
-  m.innerHTML = '<div class="mopts">' + sw('sound', 'Sound') + sw('locktiles', 'Lock tile order')
+  const psw = (k, label) => `<button data-play="${k}" class="${play[k] ? 'on' : ''}" aria-pressed="${play[k]}">${label}<span class="sw"></span></button>`;
+  const thisGame = screen === 'game' && view && view.phase !== 'over'
+    ? '<div class="mlabel">This hand</div>' + psw('noCalls', 'No calls') + psw('autoDrop', 'Auto-drop') + '<hr>' : '';
+  m.innerHTML = '<div class="mopts">' + thisGame + sw('sound', 'Sound') + sw('locktiles', 'Lock tile order')
     + `<button data-menu="mannum">Man numbers<span class="val">${prefs.mankanji ? '一二三' : '1 2 3'}</span></button>`
     + (session ? `<hr><button class="leave" data-menu="leave">Leave table</button>` : '')
     // only on the device running the minimaj app's table
@@ -207,6 +217,12 @@ function toggleMenu(force) {
       store.set('minimaj-theme', theme);
       applyTheme();
       for (const t of m.querySelectorAll('.thm')) { t.classList.toggle('on', t === b); t.setAttribute('aria-checked', t === b); }
+    } else if (b.dataset.play) {
+      const k = b.dataset.play;
+      setPlay(k, !play[k]);
+      b.classList.toggle('on', play[k]);
+      b.setAttribute('aria-pressed', play[k]);
+      if (view && table) { table.update(view, ui); autoPlay(view); }
     } else if (b.dataset.pref) {
       const k = b.dataset.pref;
       prefs[k] = !prefs[k];
@@ -247,6 +263,7 @@ function setScreen(name, cls = 'home') {
   ui.riichiMode = false;
   ui.selected = null;
   startPending = false;
+  play.hand = null; setPlay('noCalls', false); setPlay('autoDrop', false); // a new table: switches off
   app.className = cls;
   app.onclick = null;
   closeMenu();
@@ -814,12 +831,17 @@ function renderGame(v) {
     app.onclick = onGameClick;
   }
   view = v;
+  // a new hand (or a new game): both "This game" switches go back off
+  const hand = `${v.round}:${v.kyoku}:${v.honba}:${v.phase === 'over' ? 'over' : ''}`;
+  if (play.hand !== hand) { play.hand = hand; setPlay('noCalls', false); setPlay('autoDrop', false); }
   if (!v.options) { ui.riichiMode = false; ui.selected = null; }
   else if (ui.selected != null && ![v.drawn, ...v.hand].includes(ui.selected)) ui.selected = null;
   document.title = v.phase === 'over' ? 'minimaj · game over' : `minimaj · ${roundName(v)}`;
   const { event } = table.update(v, ui);
   feedback(v, prev, event);
   prev = v;
+
+  autoPlay(v);
 
   // riichi: the drawn tile is discarded for you
   const key = autoKey(v);
@@ -831,6 +853,41 @@ function renderGame(v) {
       if (autoKey(view) === key && view.options.discard.includes(tile)) act({ type: 'discard', tile });
       else if (ui.autoKey === key) ui.autoKey = null; // let the same state re-arm later
     }, 650);
+  }
+}
+
+// the "This game" switches at work (see play)
+function autoPlay(v) {
+  const c = v.claim;
+  if (play.noCalls && c && !c.ron && (c.chi || c.pon || c.kan)) {
+    const k = `${v.round}:${v.kyoku}:${v.wall}:${c.tile}`;
+    if (play.passKey !== k) { play.passKey = k; act({ type: 'pass' }); }
+  }
+  const dk = dropKey(v);
+  if (dk && play.dropKey !== dk) {
+    play.dropKey = dk;
+    const tile = v.drawn;
+    setTimeout(() => { // same state still showing (a re-broadcast swaps the view object)
+      if (play.autoDrop && dropKey(view) === dk && view.options.discard.includes(tile)) act({ type: 'discard', tile });
+      else if (play.dropKey === dk) play.dropKey = null;
+    }, 650);
+  }
+}
+// your turn with a drawn tile and nothing to decide: what auto-drop discards
+function dropKey(v) {
+  const o = v && v.options;
+  if (!play.autoDrop || !o || v.riichiLocked || v.drawn == null || o.tsumo || o.ankan.length || o.kakan.length || o.riichi.length) return null;
+  return o.discard.includes(v.drawn) ? `${v.round}:${v.kyoku}:${v.wall}:${v.drawn}` : null;
+}
+function setPlay(k, on) {
+  play[k] = !!on;
+  if (k === 'noCalls') ui.noCalls = play.noCalls;
+  if (!on) { if (k === 'autoDrop') play.dropKey = null; else play.passKey = null; }
+  const chip = $('playchip');
+  if (chip) {
+    const names = [play.noCalls && 'No calls', play.autoDrop && 'Auto-drop'].filter(Boolean);
+    chip.hidden = !names.length || screen !== 'game';
+    chip.textContent = names.join(' · ') + ' on';
   }
 }
 

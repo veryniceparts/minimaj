@@ -123,7 +123,9 @@ export function actionsHTML(v, ui) {
   const b = (act, label, cls = '') => `<button class="act ${cls}" data-act='${esc(JSON.stringify(act))}'>${label}</button>`;
   const out = [];
   let hint = '';
-  if (v.claim) {
+  if (v.claim && ui.noCalls && !v.claim.ron) {
+    hint = 'No calls: passing';
+  } else if (v.claim) {
     const c = v.claim;
     if (c.ron) out.push(b({ type: 'ron' }, 'Ron', 'win'));
     if (c.pon) out.push(b({ type: 'pon' }, 'Pon', 'call'));
@@ -669,6 +671,11 @@ export class Table {
       const r = e.getBoundingClientRect();
       if (r.width && r.height) list.push(r);
     }
+    // the buttons floating over the table (menu, full screen, the "This hand" chip)
+    for (const e of document.querySelectorAll('#menubtn, #fsbtn, #playchip')) {
+      if (e.hidden || !e.offsetParent) continue;
+      list.push(e.getBoundingClientRect());
+    }
     const bd = this.root.querySelector('#board');
     return { list, board: bd ? bd.getBoundingClientRect() : { left: -1e9, top: -1e9, right: 1e9, bottom: 1e9 } };
   }
@@ -1033,7 +1040,7 @@ export class Table {
     }, { capture: true, signal });
     // the click that ends a drag must not reach main.js (it would discard)
     window.addEventListener('click', (e) => {
-      if (performance.now() - this.dragUntil < 350) { this.dragUntil = 0; e.stopImmediatePropagation(); e.preventDefault(); }
+      if (this.dragUntil && performance.now() - this.dragUntil < 350) { this.dragUntil = 0; e.stopImmediatePropagation(); e.preventDefault(); }
     }, { capture: true, signal });
   }
 

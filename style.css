@@ -791,6 +791,15 @@ summary { cursor: pointer; font-weight: 600; }
   display: flex; align-items: center; gap: 8px; white-space: nowrap;
 }
 #banner::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: breathe .8s ease-in-out infinite alternate; }
+/* reminder while a "This hand" switch is on (main.js setPlay); top-left, on the
+   same line as the menu buttons, where the table never draws anything */
+#playchip {
+  position: fixed; top: calc(18px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); z-index: 25;
+  padding: 6px 11px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); font: 800 12px/1 var(--round);
+  box-shadow: 0 2px 8px rgba(var(--sh), .35);
+}
+#playchip[hidden] { display: none; }
 #menubtn {
   position: fixed; top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); z-index: 25;
   width: 40px; height: 40px; border-radius: 50%; border: 0; cursor: pointer;

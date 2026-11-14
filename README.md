@@ -78,8 +78,12 @@ again to discard. Buttons for **Chi / Pon / Kan / Ron / Tsumo / Riichi** appear
 when you can use them. After riichi your draws are discarded for you. The bar
 shows your waits when you are tenpai and warns you when you are furiten. When
 a hand ends, a short animation plays over the table, which then stays with all
-hands shown; tap **Show results** for the score card. The
-**•••** menu has sound (off by default), **Lock tile order** (on by default:
+hands shown; tap **Show results** for the score card. During a hand the
+**•••** menu also has two switches for **this hand**: **No calls** (chi, pon
+and kan offers are passed for you; ron and tsumo never are) and **Auto-drop**
+(your drawn tile is discarded for you unless you could win, riichi or kan). A
+small chip in the top-left corner shows while one is on, and both turn off by
+themselves when the next hand starts. The **•••** menu has sound (off by default), **Lock tile order** (on by default:
 your hand stays sorted; turn it off to drag your tiles into any order), the man-tile numeral style and nine color themes (remembered on this device).
 
 ## Rules implemented
