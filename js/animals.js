@@ -298,12 +298,11 @@ const DEFS = [
       + eyes({ dx: 7.6, y: 38.6, r: 2.5 }) + mouth(45.6) + cheeks(45, 13, 0.6);
   }],
   ['Potato', () => {
-    // a lumpy brown spud with a few darker spots
-    const f = '#d9ab72', d = '#9b6c3d', s = '#b8854b';
-    return P('M17 21.6Q29.6 12.4 44.6 17.6Q55 23 53.8 38.4Q52.6 54.4 36.4 56.8Q20 58.6 12.6 46.6Q7.4 32.6 17 21.6Z', f, ol(d))
-      + E(41.6, 24.8, 1.8, 1.2, s) + E(18.6, 31.6, 1.4, 2, s) + E(45.8, 48, 1.6, 1.2, s) + E(23.4, 51.4, 1.4, 1, s)
-      + E(25, 26.4, 5.4, 2.4, '#ecc795', ' opacity=".7" transform="rotate(-18 25 26.4)"')
-      + eyes({ dx: 7.4, y: 37.6, r: 2.5 }) + mouth(44.8) + cheeks(44.2, 13, 0.5);
+    // a chubby, flat, pale yellow potato with a few spots
+    const f = '#f8e08e', d = '#b6994d', sp = '#d8bc68';
+    return P('M6.4 42Q5.8 24 32 22.6Q58.2 24 57.6 42Q57 56.6 32 57Q7 56.6 6.4 42Z', f, ol(d, 1.6))
+      + E(48, 48, 1.3, 0.9, sp) + E(15, 34, 1.1, 0.8, sp) + E(36, 27, 1, 0.7, sp)
+      + eyes({ dx: 8, y: 39, r: 2.2 }) + mouth(45.4) + cheeks(44.6, 15, 0.45);
   }],
   ['Corn', () => {
     // a yellow cob of rounded kernels, green husks folding up both sides, a tuft of silk
@@ -341,14 +340,15 @@ const DEFS = [
       + eyes({ dx: 6.6, y: 28.6, r: 2.4 }) + mouth(35) + cheeks(34.2, 11, 0.6);
   }],
   ['Broccoli', () => {
-    // a bushy crown of dark green florets on a pale green stalk; the face is on the stalk
+    // a big, wide crown of dark green florets on a short pale green stalk (head-heavy);
+    // the face is on the stalk
     const g = '#5aa848', gd = '#2f6b26', st = '#bfe39a', sd = '#6f9a4a';
     const bump = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${g}"${ol(gd, 1.5)}/>`;
-    const dot = (x, y) => `<circle cx="${x}" cy="${y}" r="1.1" fill="#3f8a33"/>`;
-    return P('M21 30Q20.4 48 23.4 57.6Q32 61.4 40.6 57.6Q43.6 48 43 30Z', st, ol(sd))
-      + bump(16, 25, 9) + bump(48, 25, 9) + bump(24, 15, 10) + bump(40, 15, 10) + bump(32, 23, 11) + bump(32, 9.6, 7.6)
-      + [[15, 22], [19, 27], [46, 21], [50, 28], [23, 12], [27, 17], [39, 11], [42, 18], [30, 21], [35, 25], [31, 7]].map(([x, y]) => dot(x, y)).join('')
-      + eyes({ dx: 6.2, y: 42, r: 2.3 }) + mouth(48.6) + cheeks(48, 9.4, 0.6);
+    const dot = (x, y) => `<circle cx="${x}" cy="${y}" r="1.2" fill="#3f8a33"/>`;
+    return P('M21.4 34Q20.8 50 23.6 58Q32 61.6 40.4 58Q43.2 50 42.6 34Z', st, ol(sd))
+      + bump(10.6, 29, 9.6) + bump(53.4, 29, 9.6) + bump(18, 16, 11.6) + bump(46, 16, 11.6) + bump(32, 27, 13) + bump(32, 9.6, 9.6)
+      + [[8, 26], [13, 31], [51, 25], [56, 32], [15, 12], [21, 18], [43, 12], [48, 19], [29, 24], [36, 29], [31, 6], [34, 12]].map(([x, y]) => dot(x, y)).join('')
+      + eyes({ dx: 6, y: 46, r: 2.2 }) + mouth(51.6) + cheeks(51, 9, 0.6);
   }],
 ];
 
