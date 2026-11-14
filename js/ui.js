@@ -18,7 +18,7 @@ const PIN = [[[50, 50]], [[50, 28], [50, 72]], [[28, 24], [50, 50], [72, 76]], [
 const SOU = { 2: [[50, 28], [50, 72]], 3: [[50, 28], [30, 72], [70, 72]], 4: [[30, 28], [70, 28], [30, 72], [70, 72]],
   5: [[26, 28], [74, 28], [50, 50], [26, 72], [74, 72]], 6: [[24, 28], [50, 28], [76, 28], [24, 72], [50, 72], [76, 72]],
   7: [[50, 14], [24, 50], [50, 50], [76, 50], [24, 84], [50, 84], [76, 84]],
-  8: [[18, 30], [38, 30], [62, 30], [82, 30], [18, 72], [38, 72], [62, 72], [82, 72]],
+  8: [[15, 28], [39, 28], [61, 28], [85, 28], [15, 72], [39, 72], [61, 72], [85, 72]],
   9: [[24, 16], [50, 16], [76, 16], [24, 50], [50, 50], [76, 50], [24, 84], [50, 84], [76, 84]] };
 const svg = (body) => `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${body}</svg>`;
 
@@ -46,15 +46,17 @@ function souSVG(n, red) {
   if (n === 1) {
     return svg(`<ellipse cx="50" cy="42" rx="22" ry="26" fill="${C.sou}"/><circle cx="42" cy="35" r="5" fill="#fff"/><path d="M36 66 L50 90 L64 66Z" fill="${C.man}"/>`);
   }
-  const h = n === 7 || n === 9 ? 22 : 30;
+  const h = n === 7 || n === 9 ? 22 : n === 8 ? 34 : 30;
   // red sticks as on real tiles: the 5's centre, the 7's top, the 9's centre column; the 6 is all
   // green, so a red column means 9
-  // 8-sou: sticks lean into an "M" over a "W" (traditional), so it can't be mistaken for 6-sou
-  const SOU8_TILT = [-22, 22, -22, 22, 22, -22, 22, -22];
+  // 8-sou as on classic tiles: an "M" over a "W" (outer sticks upright, the middle two
+  // leaning together to a point), so it can't be mistaken for the 6-sou
+  const SOU8_TILT = [0, 30, -30, 0, 0, -30, 30, 0];
   return svg(SOU[n].map(([x, y], i) => {
     const c = red && n === 5 ? C.red
       : (n === 9 && i % 3 === 1) || (n === 7 && i === 0) || (n === 5 && i === 2) ? C.man : C.sou;
-    const stick = `<rect x="${x - 8}" y="${y - h / 2}" width="16" height="${h}" rx="8" fill="${c}"/><rect x="${x - 9}" y="${y - 1.6}" width="18" height="3.2" rx="1.6" fill="${C.tile}" opacity=".85"/>`;
+    const w = n === 8 ? 15 : 16;
+    const stick = `<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="${w / 2}" fill="${c}"/><rect x="${x - w / 2 - 1}" y="${y - 1.6}" width="${w + 2}" height="3.2" rx="1.6" fill="${C.tile}" opacity=".85"/>`;
     return n === 8 ? `<g transform="rotate(${SOU8_TILT[i]} ${x} ${y})">${stick}</g>` : stick;
   }).join(''));
 }
