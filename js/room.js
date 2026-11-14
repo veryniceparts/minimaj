@@ -13,7 +13,7 @@ export const MIN_PROTO = 2;
 
 const MAX = 4;
 const BOT_NAMES = ['CPU Ume', 'CPU Take', 'CPU Matsu'];
-export const ANIMAL_COUNT = 33; // mascots in js/animals.js (keep in sync: test checks)
+export const ANIMAL_COUNT = 35; // mascots in js/animals.js (keep in sync: test checks)
 
 // n distinct random animal indices (one per seat), so every screen shows the same ones
 export function pickAnimals(n) {

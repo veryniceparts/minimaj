@@ -1,4 +1,4 @@
-// 33 mascots (27 animals, 6 vegetables) as inline SVG, one per seat (the room picks them: view.players[i].animal).
+// 35 mascots (27 animals, 8 vegetables) as inline SVG, one per seat (the room picks them: view.players[i].animal).
 // Shared template: a round outlined head on a 64x64 canvas, plus per-animal ears, markings
 // and snout. Groups the CSS animates: .bd (whole body), .ear (each ear), .eo (open eyes,
 // blink) and the face variants of eyes() below, shown during emotes. Markup is cached per animal.
@@ -330,12 +330,32 @@ const DEFS = [
       + `<circle cx="20" cy="20" r="4.2" fill="#fff8f0"/><circle cx="34" cy="14.4" r="3.4" fill="#fff8f0"/><circle cx="45.4" cy="22.6" r="4.6" fill="#fff8f0"/><circle cx="28.6" cy="27.4" r="2.6" fill="#fff8f0"/><circle cx="13" cy="28.6" r="2" fill="#fff8f0"/>`
       + eyes({ dx: 6.2, y: 43, r: 2.4 }) + mouth(49.4) + cheeks(48.6, 9.6, 0.6);
   }],
+  ['Carrot', () => {
+    // an orange root tapering to a point, a few ridges, a bunch of green leaves on top
+    const f = '#ff9a3d', d = '#c4621d', g = '#6cbf5a', gd = '#3f7f34';
+    return P('M25.6 16.4Q22.4 4.6 27 3.4Q30.4 6.4 30.6 15.6Z', g, ol(gd, 1.2)) + P('M30.6 15.4Q31 2.4 35.6 2.6Q38 7.4 34.6 15.8Z', '#7fcd66', ol(gd, 1.2))
+      + P('M34.4 16.2Q40.4 5.6 44.6 8Q44 13.6 37.6 17.6Z', g, ol(gd, 1.2))
+      + P('M17.4 21.6Q32 11.6 46.6 21.6Q47.2 33 40.6 45Q35.6 55 32.6 61.4Q31.4 62.4 30.6 61Q25 52 20.6 42Q15.6 30.6 17.4 21.6Z', f, ol(d))
+      + line('M20.6 36.4l4.4 .6M41.6 32l-4.2 1M24.4 46.6l3.4.2M38.4 44.4l-3 .8M30 54.4h3', '#d9732a', 1.4)
+      + E(24.4, 25.6, 2.2, 4.6, '#ffc489', ' opacity=".6" transform="rotate(14 24.4 25.6)"')
+      + eyes({ dx: 6.6, y: 28.6, r: 2.4 }) + mouth(35) + cheeks(34.2, 11, 0.6);
+  }],
+  ['Broccoli', () => {
+    // a bushy crown of dark green florets on a pale green stalk; the face is on the stalk
+    const g = '#5aa848', gd = '#2f6b26', st = '#bfe39a', sd = '#6f9a4a';
+    const bump = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${g}"${ol(gd, 1.5)}/>`;
+    const dot = (x, y) => `<circle cx="${x}" cy="${y}" r="1.1" fill="#3f8a33"/>`;
+    return P('M21 30Q20.4 48 23.4 57.6Q32 61.4 40.6 57.6Q43.6 48 43 30Z', st, ol(sd))
+      + bump(16, 25, 9) + bump(48, 25, 9) + bump(24, 15, 10) + bump(40, 15, 10) + bump(32, 23, 11) + bump(32, 9.6, 7.6)
+      + [[15, 22], [19, 27], [46, 21], [50, 28], [23, 12], [27, 17], [39, 11], [42, 18], [30, 21], [35, 25], [31, 7]].map(([x, y]) => dot(x, y)).join('')
+      + eyes({ dx: 6.2, y: 42, r: 2.3 }) + mouth(48.6) + cheeks(48, 9.4, 0.6);
+  }],
 ];
 
 export const ANIMAL_NAMES = DEFS.map(([n]) => n);
 export const ANIMAL_COUNT = DEFS.length;
 // which idle moves make sense (all have blink/hop/tilt/wag; these also have ears that move)
-const EARLESS = new Set(['Penguin', 'Duck', 'Frog', 'Crocodile', 'Shoebill', 'Moonfish', 'Tit', 'Kingfisher', 'Nuthatch', 'Sparrow', 'Eggplant', 'Tomato', 'Garlic', 'Potato', 'Corn', 'Mushroom']);
+const EARLESS = new Set(['Penguin', 'Duck', 'Frog', 'Crocodile', 'Shoebill', 'Moonfish', 'Tit', 'Kingfisher', 'Nuthatch', 'Sparrow', 'Eggplant', 'Tomato', 'Garlic', 'Potato', 'Corn', 'Mushroom', 'Carrot', 'Broccoli']);
 export const animalMoves = (i) => (EARLESS.has(ANIMAL_NAMES[i]) ? ['blink', 'hop', 'tilt', 'wag'] : ['blink', 'ear', 'hop', 'tilt', 'wag']);
 
 const cache = new Map();
