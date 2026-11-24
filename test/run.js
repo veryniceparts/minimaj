@@ -9,6 +9,7 @@ import { runRoomTests } from './room.test.js';
 import { runQrTests } from './qr.test.js';
 import { runNetTests } from './net.test.js';
 import { runLanTests } from './lan.test.js';
+import { runRendezvousTests } from './rendezvous.test.js';
 
 // helpers: parse "123m456p789s11z" style (z: 1-7 = E S W N Wh G R) into tile ids
 function parse(str) {
@@ -140,6 +141,7 @@ n += runQrTests();
 n += runRoomTests();
 n += runLanTests();
 n += await runNetTests();
+n += await runRendezvousTests();
 
 n += runEngineTests();
 

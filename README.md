@@ -11,7 +11,8 @@ There are two ways to play:
   without internet.
 - **Online room (any browser).** Open the static web version, press **Create
   room** and send the 5-letter code or link. Players connect peer-to-peer over
-  WebRTC. The public PeerJS server is only used to set up the connection.
+  WebRTC. Free public servers (PeerJS and a few MQTT brokers) are only used to
+  set up the connection.
 
 If someone drops out, their mascot falls asleep and the table waits
 for them: they get their seat back by opening the link again, or just by
@@ -132,7 +133,8 @@ small vendored port of lean-qr (MIT). Android uses no libraries at all: a plain
 | `js/tiles.js`, `js/hand.js` | tiles; shanten (table-driven), waits, yaku, fu, points |
 | `js/game.js`, `js/bot.js` | the authoritative engine, and the computer player |
 | `js/room.js` | lobby, seats, host rules, rejoin, heartbeat; independent of the transport |
-| `js/net.js` | client sessions: WebSocket (app) or PeerJS (online), with auto-reconnect |
+| `js/net.js` | client sessions: WebSocket (app) or WebRTC (online), with auto-reconnect |
+| `js/rendezvous.js`, `js/mqtt.js` | online signaling over public MQTT brokers (next to PeerJS), and a tiny MQTT client |
 | `js/ui.js`, `js/main.js`, `style.css` | rendering (keyed tile nodes and FLIP animations), screens, sound |
 | `js/qr.js`, `js/vendor/peerjs.min.js` | vendored QR encoder and PeerJS |
 | `server/` | the Go app: event loop, JS bundler, HTTP/WebSocket, LAN detection, terminal QR |
@@ -175,3 +177,10 @@ put the `GOOS=android GOARCH=arm64` binary at
   them): if they are abused, reset them in the Metered dashboard and update
   `js/config.js`. Without a working relay, those players see "a network on one
   side blocks direct peer-to-peer connections" after about 40 s.
+- To set up an online connection, players exchange a short offer through
+  several free public servers at once: three MQTT brokers (listed in
+  `js/config.js`) and, as another route, the PeerJS server. The first route
+  that connects wins, so one blocked or flaky server doesn't lock anybody out.
+  The offers are encrypted with a key derived from the room code. Game data
+  never goes through these servers: it flows directly between the players, or
+  through the TURN relay.

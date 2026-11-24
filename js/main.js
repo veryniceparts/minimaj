@@ -70,10 +70,20 @@ function toast(msg, ms = 2600) {
   toastTimer = setTimeout(() => { el.hidden = true; }, ms);
 }
 
-function banner(text) {
+// action: optional { label, fn } shown as a small button inside the banner
+function banner(text, action) {
   const el = $('banner');
   el.hidden = !text;
-  if (text) el.textContent = text;
+  if (!text) return;
+  el.textContent = text;
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'banner-btn';
+    b.textContent = action.label;
+    b.onclick = action.fn;
+    el.append(b);
+  }
 }
 
 /* ---------------- sound (off by default) ---------------- */
@@ -580,7 +590,8 @@ function sessionHandlers(token, opts) {
     onEmote: (ev) => { if (live()) showEmote(ev); },
     onConn: (state) => {
       if (!live()) return;
-      if (state === 'reconnecting') banner('Reconnecting…');
+      // "Rejoin" tries again at once instead of waiting out the backoff
+      if (state === 'reconnecting') banner('Reconnecting…', { label: 'Rejoin', fn: () => { if (live() && session && session.retryNow) session.retryNow(); } });
       else if (state === 'connecting' && (screen === 'lobby' || screen === 'game')) banner('Connecting…');
       else if (state === 'closed' && screen !== 'home') banner('Disconnected');
       else banner('');

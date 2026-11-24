@@ -1,6 +1,6 @@
-// Network settings for online rooms (PeerJS / WebRTC). Edit this file, or set
-// window.MINIMAJ_NET = { ... } in a <script> before the game loads; fields
-// given there replace the ones below.
+// Network settings for online rooms (WebRTC; signaling via PeerJS and MQTT).
+// Edit this file, or set window.MINIMAJ_NET = { ... } in a <script> before
+// the game loads; fields given there replace the ones below.
 //
 // Why TURN matters: WebRTC first tries a direct path between the two
 // browsers (with STUN to learn the public address). That fails when either
@@ -25,6 +25,15 @@
 // Empty means the free public server 0.peerjs.com. Run your own PeerServer
 // (npm "peer") if that one is down or blocked on your players' networks.
 // Every player in a room must use the same signaling server.
+// peerjs: false turns the PeerJS route off (rooms then use only the MQTT
+// brokers below).
+//
+// mqtt: public MQTT brokers (WebSocket endpoints) used as extra signaling
+// routes, all at the same time, next to PeerJS: whichever connects the two
+// players first wins, so a blocked or flaky server no longer locks anybody
+// out. They are free, no-account test brokers; they only pass the short
+// connection offers, encrypted with a key derived from the room code (game
+// data never goes through them). Empty list = PeerJS only.
 export const NET_CONFIG = {
   iceServers: [
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
@@ -45,4 +54,10 @@ export const NET_CONFIG = {
   ],
   iceUrl: '',
   peer: {},
+  peerjs: true,
+  mqtt: [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://broker.hivemq.com:8884/mqtt',
+    'wss://test.mosquitto.org:8081/mqtt',
+  ],
 };

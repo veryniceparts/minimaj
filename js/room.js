@@ -34,7 +34,7 @@ export function pickAnimalExcept(taken) {
 }
 export const MAX_REROLLS = 3; // per member per lobby visit (reset when a game ends)
 const REMEMBER_MAX = 32; // lobby leavers whose mascot is kept for a rejoin (same cid)
-const TIMEOUT_MS = 9000;
+const TIMEOUT_MS = 20000; // silence before a connection counts as gone (phones on 4G + VPN stall)
 const CHECK_MS = 1000;
 // a human the table has waited on this long falls asleep (their mascot only; nobody
 // plays for them). Any action, emote or touch wakes them.

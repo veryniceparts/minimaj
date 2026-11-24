@@ -125,8 +125,10 @@ export function runRoomTests() {
     clock.advance(300);
     assert.ok(r.closedIds.includes('b2'));
     assert.equal(r.last('a', 'view').view.players[seatB].kind, 'human', 'closing the old tab keeps the seat human');
-    // silence for >9 s -> closed, bot takes over (a keeps pinging)
-    for (let i = 0; i < 11; i++) { r.msg('a', { t: 'ping', n: i }); clock.advance(1000); }
+    // silence for >20 s -> closed, bot takes over (a keeps pinging)
+    for (let i = 0; i < 19; i++) { r.msg('a', { t: 'ping', n: i }); clock.advance(1000); }
+    assert.ok(!r.closedIds.includes('b3'), 'not closed after 19 s of silence');
+    for (let i = 0; i < 3; i++) { r.msg('a', { t: 'ping', n: i }); clock.advance(1000); }
     assert.ok(r.closedIds.includes('b3'));
     assert.ok(!r.closedIds.includes('a'));
     assert.deepEqual([r.last('a', 'view').view.players[seatB].kind, r.last('a', 'view').view.players[seatB].away], ['human', 'gone']);

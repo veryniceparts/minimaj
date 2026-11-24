@@ -135,9 +135,11 @@ export async function runNetTests() {
   assert.deepEqual(B.log.conn, ['connecting', 'open']);
   assert.equal(A.log.view.players[seatB].kind, 'human');
 
-  // B's link goes silent: B notices within ~9-10 s, reconnects with the same cid and gets its seat back
+  // B's link goes silent: B notices within ~20-21 s (not before), reconnects with the same cid and gets its seat back
   blackhole = [...sockets.values()].find((w) => w.id !== 1 && w.readyState === 1).id;
-  clock.advance(11000);
+  clock.advance(18000);
+  assert.ok(!B.log.conn.includes('reconnecting'), 'a short stall is not a drop');
+  clock.advance(4000);
   assert.ok(B.log.conn.includes('reconnecting'));
   assert.equal(B.log.conn.at(-1), 'open');
   assert.equal(B.log.view.seat, seatB);

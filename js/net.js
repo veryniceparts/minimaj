@@ -2,28 +2,40 @@
 //   LAN mode:    the room runs in the native server; we talk over a WebSocket.
 //   Online mode: the creator's tab runs the room itself (its own UI is the
 //                in-page connection 'self'); others connect over WebRTC data
-//                channels set up by PeerJS (loaded on demand). ICE/TURN and
-//                signaling settings live in js/config.js.
-// Both client kinds send a ping every 3 s; 9 s without any message means the
+//                channels. The connection is set up through two kinds of
+//                signaling at once: the PeerJS server (loaded on demand) and
+//                several public MQTT brokers (js/rendezvous.js); the first
+//                route that opens a channel wins, so one blocked or flaky
+//                server locks nobody out. ICE/TURN and signaling settings
+//                live in js/config.js.
+// Both client kinds send a ping every 3 s; 20 s without any message means the
 // link is dead, and we reconnect with backoff using the same client id, so the
 // room hands our seat back. A joiner that has never got in gives up after a
 // few tries with a message that says what failed (room server, host, or a
 // network that blocks peer-to-peer connections) instead of spinning forever.
 import { createRoom, PROTO, EMOTES, emoteAllowed } from './room.js';
 import { NET_CONFIG } from './config.js';
+import { hostRendezvous, dialRendezvous } from './rendezvous.js';
 
 const PREFIX = 'minimaj-v1-';
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PING_MS = 3000;
-const DEAD_MS = 9000;
+const DEAD_MS = 20000; // phones on 4G + VPN can stall for many seconds without being gone
 const TICK_MS = 1000;
 const BACKOFF_MS = [500, 1000, 2000, 4000, 8000];
-const CONNECT_TIMEOUT_MS = 12000;
+const CONNECT_TIMEOUT_MS = 12000; // per attempt; grows on reconnects (connectTimeout)
+const STARVED_MS = 5000; // tick() late by this much: the tab was frozen, not the link
+const WARN_AFTER = 5; // reconnect attempts before the status names the real reason
+const HOST_REFRESH_MS = 4 * 60 * 1000; // re-register with the PeerJS server this often
+const HIDDEN_REFRESH_MS = 20000; // ... and after the tab was hidden this long
+const HALF_OPEN_MS = 30000; // online host: a connection not open by then is dropped
 const FIRST_TRIES = 3; // online joiner: failed attempts before giving up (never connected yet)
 const SIGNAL_TRIES = 3; // online host: room-server failures before giving up on opening a room
 const RECLAIM_MS = 60000; // online host after a reload: keep asking for the old code this long
 const RECLAIM_EVERY_MS = 3000;
 const HOST_RECONNECT_MS = [1000, 2000, 4000, 8000, 15000];
+const HOST_PEER_WAIT_MS = 15000; // online host: a PeerJS registration unanswered this long has failed (blackholed server)
+const HOST_MQTT_WAIT_MS = 10000; // online host: after PeerJS gave up, wait this long for an MQTT broker
 
 // A view comes from the host, which may be another player's modified browser: force
 // the numbers the UI draws to be numbers in range, and known words to known words, so
@@ -172,12 +184,26 @@ function loadPeerJS() {
   return peerJsPromise;
 }
 
+// The MQTT route's settings, or null when it can't run here (no brokers
+// configured, no WebSocket, or no WebCrypto: pages on plain http:// over the
+// network are not a secure context).
+function mqttRoute() {
+  const cfg = netConfig();
+  const brokers = Array.isArray(cfg.mqtt) ? cfg.mqtt.filter((u) => typeof u === 'string' && /^wss?:\/\//i.test(u)) : [];
+  const WS = typeof window !== 'undefined' ? window.WebSocket : null;
+  const RTC = typeof window !== 'undefined' ? (window.RTCPeerConnection || window.webkitRTCPeerConnection) : null;
+  const crypto = globalThis.crypto;
+  if (!brokers.length || typeof WS !== 'function' || typeof RTC !== 'function' || !crypto || !crypto.subtle) return null;
+  return { brokers, WebSocket: WS, RTCPeerConnection: RTC };
+}
+const usePeerJS = () => netConfig().peerjs !== false;
+
 const hasWebRTC = () => typeof window !== 'undefined' && typeof (window.RTCPeerConnection || window.webkitRTCPeerConnection) === 'function';
 
 const MSG = {
   browser: 'This browser cannot make peer-to-peer (WebRTC) connections, which online rooms need. '
     + 'If you opened the link inside another app (chat, social media), open it in Chrome, Safari or Firefox instead.',
-  signal: 'Could not reach the online-room server (0.peerjs.com). Check your internet connection — some school, office and public networks block it. Try another network.',
+  signal: 'Could not reach any online-room server. Check your internet connection — some school, office and public networks block them. Try another network.',
   notFound: (c) => `No room with the code ${c}. Check the code. The host must keep the room open (on a phone: the app or tab in front, screen on).`,
   ice: 'Could not connect to the host: a network on one side blocks direct peer-to-peer connections. '
     + 'This is common on mobile data and on office, school or hotel Wi-Fi. Try another network (for example both on home Wi-Fi), or ask the host to set up a TURN relay.',
@@ -225,6 +251,8 @@ export function createSession(opts, handlers) {
   let lastPing = 0;
   let pingN = 0;
   let tickTimer = null;
+  let lastTick = Date.now(); // when tick() last ran (a big gap: our timers were frozen)
+  let hiddenAt = 0;
   const emoteTimes = []; // our own recent emotes: the room's rate limit, applied before sending
 
   // online-host state
@@ -232,11 +260,21 @@ export function createSession(opts, handlers) {
   let hostPeer = null;
   let hostConns = null;
   let selfDeliver = null;
-  let hostOpened = false; // the room's code is registered (at least once)
+  let hostOpened = false; // the room's code is settled and players may join
   let hostedAt = 0; // when the hosted code was last remembered (lastHostedCode)
   let hostRetry = 0; // reconnects to the room server since it was last open
   let hostRetryAt = 0;
   let hostSignalNoted = false;
+  let hostPopts = null; // PeerJS options (ICE servers)
+  let hostRdv = null; // MQTT signaling (js/rendezvous.js), or null when unavailable
+  let peerUp = false; // registered with the PeerJS server right now
+  let hostOpenedAt = 0;
+  let codeTakenNoted = false;
+  let peerGaveUp = false; // PeerJS could not open the room (or is turned off)
+  let peerRetryTimer = null;
+  let mqttWait = null;
+  let hostRefreshedAt = 0;
+  let peerRefreshing = false; // a deliberate disconnect + reconnect (hostSignalRefresh)
   // online-joiner state
   let peer = null;
 
@@ -304,42 +342,84 @@ export function createSession(opts, handlers) {
       fail(fatalText || why || 'Could not connect');
       return;
     }
-    scheduleReconnect(why);
+    scheduleReconnect(why, fatalText);
   }
 
-  function scheduleReconnect(why) {
+  function scheduleReconnect(why, fatalText) {
     if (stopped || retryTimer) return;
     const ms = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
     attempt++;
     setConn('reconnecting');
-    call('onStatus', (why || 'Connection lost') + ' — reconnecting…');
+    // after a few silent failures, say what is actually wrong (and keep trying)
+    call('onStatus', everOpen && attempt >= WARN_AFTER && fatalText ? fatalText + ' Still trying…' : (why || 'Connection lost') + ' — reconnecting…');
     retryTimer = setTimeout(() => { retryTimer = null; connect(); }, ms);
   }
+
+  // One attempt's time limit: longer on each reconnect once we have been in,
+  // so slow VPN / TURN paths are not always cut short.
+  const connectTimeout = () => (everOpen ? Math.min(30000, CONNECT_TIMEOUT_MS + 6000 * attempt) : CONNECT_TIMEOUT_MS);
+
+  // reconnect now (a "Rejoin" button, the network came back): skips the backoff wait
+  function retryNow() {
+    if (stopped || !retryTimer) return false;
+    clearTimeout(retryTimer); retryTimer = null;
+    connect();
+    return true;
+  }
+
+  const ping = (t) => { lastPing = Date.now(); t.send({ t: 'ping', n: ++pingN }); };
 
   function tick() {
     tickTimer = null;
     if (stopped) return;
     tickTimer = setTimeout(tick, TICK_MS);
+    const now = Date.now();
+    const starved = now - lastTick > STARVED_MS;
+    lastTick = now;
     hostSignalCheck(false);
+    if (hostOpened && now - hostRefreshedAt > HOST_REFRESH_MS) hostSignalRefresh();
     // still hosting: keep the remembered code fresh
     if (hostOpened && code && Date.now() - hostedAt > 60000) { rememberHosted(code); hostedAt = Date.now(); }
     const t = transport;
     if (!t || connState !== 'open' || stopped) return;
-    const now = Date.now();
-    if (now - lastPing >= PING_MS) { lastPing = now; t.send({ t: 'ping', n: ++pingN }); }
-    // online rooms run in the host's tab: a locked screen / backgrounded tab is the usual cause
-    if (!t.local && now - lastRx > DEAD_MS) onDrop(t, mode === 'online' ? "No answer from the host (is their screen locked or minimaj in the background?)" : 'No answer from the host');
+    // our own timers were frozen (background tab, sleeping phone): the silence
+    // says nothing about the link, so ask again instead of dropping it
+    if (starved && !t.local) { lastRx = now; ping(t); return; }
+    if (now - lastPing >= PING_MS) ping(t);
+    if (!t.local && now - lastRx > DEAD_MS) onDrop(t, 'Connection lost');
   }
 
   function onVisible() {
-    if (document.visibilityState !== 'visible' || stopped) return;
+    if (document.visibilityState !== 'visible') { hiddenAt = Date.now(); return; }
+    if (stopped) return;
+    const hiddenFor = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (hiddenFor > HIDDEN_REFRESH_MS) hostSignalRefresh();
     hostSignalCheck(true);
-    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; connect(); return; }
+    if (retryNow()) return;
     const t = transport;
     if (t && connState === 'open') {
-      if (!t.local && Date.now() - lastRx > DEAD_MS) onDrop(t, 'Connection lost');
-      else { lastPing = Date.now(); t.send({ t: 'ping', n: ++pingN }); }
+      ping(t);
+      // back from the background: give the link a few seconds to answer
+      if (!t.local && Date.now() - lastRx > DEAD_MS - 4000) lastRx = Date.now() - DEAD_MS + 4000;
     }
+  }
+
+  // The network changed (back online, Wi-Fi <-> mobile data, VPN): links made
+  // over the old one may be dead without noticing. Check at once.
+  function onNetChange() {
+    if (stopped) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    hostSignalRefresh();
+    if (retryNow()) return;
+    const t = transport;
+    if (t && connState === 'open' && !t.local) ping(t);
+  }
+  const netConn = () => (typeof navigator !== 'undefined' && navigator.connection && typeof navigator.connection.addEventListener === 'function' ? navigator.connection : null);
+  function listenNet(on) {
+    const m = on ? 'addEventListener' : 'removeEventListener';
+    try { if (typeof window !== 'undefined' && typeof window[m] === 'function') window[m]('online', onNetChange); } catch (e) { /* ignore */ }
+    try { const c = netConn(); if (c) c[m]('change', onNetChange); } catch (e) { /* ignore */ }
   }
 
   function send(msg) {
@@ -414,12 +494,91 @@ export function createSession(opts, handlers) {
       log: () => {},
     });
     if (!hasWebRTC()) { fail(MSG.browser); return; }
+    const saved = normCode(storageGet('sessionStorage', 'minimaj-host-code'));
+    const wanted = code || (codeProblem(saved) ? null : saved) || lastHostedCode();
+    const first = wanted || makeCode();
+    // Whichever answers first opens the room: an MQTT broker (the room opens at
+    // once with this code; PeerJS registers it in the background) or the
+    // PeerJS server (it settles the code: reclaim after a reload, collisions).
+    // Waiting for PeerJS would stall every room when its server is blocked.
+    ensureRdv(first);
+    if (!usePeerJS()) { peerGaveUp = true; hostFallback(MSG.signal); return; }
     Promise.all([loadPeerJS(), peerOptions()]).then(([, popts]) => {
       if (stopped) return;
-      const saved = normCode(storageGet('sessionStorage', 'minimaj-host-code'));
-      const wanted = code || (codeProblem(saved) ? null : saved) || lastHostedCode();
-      openHostPeer(popts, wanted, Date.now(), 0, 0);
-    }, (e) => fail(e.message));
+      hostPopts = popts;
+      openHostPeer(first, !!wanted, Date.now(), 0, 0);
+    }, (e) => { peerGaveUp = true; hostFallback(e.message); });
+  }
+
+  // the room's code is settled (by PeerJS, or by the MQTT route alone): let players in
+  function hostOpen(c) {
+    if (hostOpened || stopped) return;
+    if (mqttWait) { clearTimeout(mqttWait); mqttWait = null; }
+    code = c;
+    storageSet('sessionStorage', 'minimaj-host-code', c);
+    rememberHosted(c); hostedAt = Date.now();
+    hostOpened = true;
+    hostOpenedAt = hostRefreshedAt = Date.now();
+    ensureRdv(c);
+    if (hostRdv) hostRdv.active = true;
+    connectSelf();
+    // opened without PeerJS: keep trying to register there too, for players
+    // whose MQTT route is blocked (and older versions, which only use PeerJS)
+    if (peerGaveUp && !hostPeer) retryHostPeer();
+  }
+
+  // MQTT signaling for the code c (the candidate until hostOpen, then the room's)
+  function ensureRdv(c) {
+    if (hostRdv && hostRdv.code === c) return;
+    if (hostRdv) hostRdv.close();
+    hostRdv = null;
+    const rt = mqttRoute();
+    if (!rt) return;
+    hostRdv = hostRendezvous({
+      code: c,
+      ...rt,
+      iceServers,
+      onConnection: (conn) => { if (hostOpened && !stopped) acceptConn(conn); else conn.close(); },
+      onStatus: () => { if (!tryMqttOpen()) hostRoutes(); },
+    });
+  }
+
+  // Open the room on the MQTT route as soon as a broker is up.
+  function tryMqttOpen() {
+    if (hostOpened || stopped || !hostRdv || !hostRdv.brokersUp) return false;
+    hostOpen(hostRdv.code);
+    return true;
+  }
+
+  // PeerJS can't open the room: the MQTT route alone, or give up if it can't either
+  function hostFallback(text) {
+    if (hostOpened || stopped) return;
+    if (tryMqttOpen()) return;
+    if (!hostRdv) { fail(text || MSG.signal); return; }
+    if (!mqttWait) mqttWait = setTimeout(() => { mqttWait = null; if (!hostOpened && !stopped) fail(MSG.signal); }, HOST_MQTT_WAIT_MS);
+  }
+
+  // Tell the host when no signaling route works at all (and when one is back).
+  function hostRoutes() {
+    if (!hostOpened || stopped) return;
+    const up = peerUp || !!(hostRdv && hostRdv.brokersUp);
+    if (!up && !hostSignalNoted) {
+      hostSignalNoted = true;
+      call('onStatus', 'Lost the online-room server — the game goes on, but new players can\'t join until it is back');
+    } else if (up && hostSignalNoted) {
+      hostSignalNoted = false;
+      call('onStatus', 'Back online — friends can join again');
+    }
+  }
+
+  // The room is open but not registered with PeerJS: try again later, quietly.
+  function retryHostPeer() {
+    if (stopped || !hostPopts || peerRetryTimer || !usePeerJS()) return;
+    const ms = HOST_RECONNECT_MS[Math.min(hostRetry++, HOST_RECONNECT_MS.length - 1)];
+    peerRetryTimer = setTimeout(() => {
+      peerRetryTimer = null;
+      if (!stopped && !peerUp && (!hostPeer || hostPeer.destroyed)) openHostPeer(code, true, Date.now(), 0, 0);
+    }, ms);
   }
 
   let nextConnId = 1;
@@ -439,6 +598,8 @@ export function createSession(opts, handlers) {
       if (room) room.closed(id);
     };
     conn.on('close', gone);
+    // PeerJS reports 'close' only for connections that opened: drop the rest
+    setTimeout(() => { if (!conn.open) gone(); }, HALF_OPEN_MS);
     conn.on('error', (err) => {
       // one message that was too big is not a dead connection
       if (err && err.type === 'message-too-big') { try { console.warn('minimaj: message too big'); } catch (e) { /* ignore */ } return; }
@@ -446,71 +607,108 @@ export function createSession(opts, handlers) {
     });
   }
 
-  // wanted: the code to (re)claim, or null for a new random one.
-  // since: when we started asking for `wanted`; collisions: random codes taken.
-  function openHostPeer(popts, wanted, since, collisions, signalFails) {
+  // c: the code to register with the PeerJS server; reclaim: c is our earlier
+  // code (wait for it rather than take another). since: when we started asking
+  // for it; collisions: random codes found taken.
+  function openHostPeer(c, reclaim, since, collisions, signalFails) {
     if (stopped) return;
-    const c = wanted || makeCode();
+    // a delayed retry after the room opened another way: one Peer at a time
+    if (hostOpened && (peerUp || (hostPeer && !hostPeer.destroyed))) return;
+    if (!hostOpened) ensureRdv(c);
     let p;
-    try { p = new window.Peer(PREFIX + c, popts); } catch (e) { fail(MSG.browser); return; }
+    try { p = new window.Peer(PREFIX + c, hostPopts); } catch (e) { peerGaveUp = true; hostPeer = null; hostFallback(MSG.browser); return; }
     hostPeer = p;
-    let opened = false;
-    const retire = () => { try { p.destroy(); } catch (e) { /* ignore */ } };
+    let registered = false;
+    const retire = () => { try { p.destroy(); } catch (e) { /* ignore */ } if (hostPeer === p) hostPeer = null; };
     p.on('open', () => {
       if (hostPeer !== p || stopped) return;
+      if (hostOpened && c !== code) { retire(); retryHostPeer(); return; }
+      registered = true; peerUp = true; peerRefreshing = false;
       hostRetry = 0; hostRetryAt = 0;
-      if (hostSignalNoted) { hostSignalNoted = false; call('onStatus', 'Back online — friends can join again'); }
-      if (opened) return; // reconnected to the room server
-      opened = true;
-      code = c;
-      storageSet('sessionStorage', 'minimaj-host-code', c);
-      rememberHosted(c); hostedAt = Date.now();
-      hostOpened = true;
-      connectSelf();
+      if (!hostOpened) hostOpen(c);
+      hostRoutes();
     });
     p.on('connection', acceptConn);
     p.on('disconnected', () => {
       // lost the room server: running games keep working; tick() reconnects
-      if (hostPeer !== p || stopped || !opened) return;
+      if (hostPeer !== p || stopped || !registered) return;
+      peerUp = false;
       if (!hostRetryAt) hostRetryAt = Date.now() + HOST_RECONNECT_MS[0];
+      if (!peerRefreshing) hostRoutes();
     });
-    p.on('error', (err) => {
+    // A blackholed server (accepts the connection, never answers) sends no
+    // event at all: give the registration a time limit.
+    setTimeout(() => {
+      if (hostPeer !== p || stopped || registered) return;
+      if (!hostOpened && !(hostRdv && hostRdv.brokersUp)) { retire(); fail(MSG.signal); return; }
+      onErr({ type: 'network' });
+    }, HOST_PEER_WAIT_MS);
+    p.on('error', onErr);
+    function onErr(err) {
       if (hostPeer !== p || stopped) return;
       const type = err && err.type;
       if (type === 'peer-unavailable') return;
-      if (opened) {
-        // after the room is up: only tell the host once per outage
-        if (isSignalErr(err) || type === 'unavailable-id') {
-          if (!hostSignalNoted) { hostSignalNoted = true; call('onStatus', 'Lost the online-room server — the game goes on, but new players can\'t join until it is back'); }
-          return;
-        }
+      if (registered) {
+        // after the room is up: only tell the host when no route is left (hostRoutes)
+        if (isSignalErr(err) || type === 'unavailable-id') { peerUp = false; peerRefreshing = false; hostRoutes(); return; }
         call('onStatus', peerErrorText(err, code));
         return;
       }
       retire();
+      if (hostOpened) {
+        // the room is open over MQTT: keep its code even if somebody else holds
+        // it on the PeerJS server (only PeerJS-only clients can't join then)
+        if (type === 'unavailable-id' && !codeTakenNoted && Date.now() - hostOpenedAt > RECLAIM_MS) {
+          codeTakenNoted = true;
+          try { console.warn('minimaj: room code ' + code + ' is held by someone else on the PeerJS server; players reach this room over MQTT only'); } catch (e) { /* ignore */ }
+        }
+        retryHostPeer();
+        return;
+      }
       if (type === 'unavailable-id') {
-        if (wanted && Date.now() - since < RECLAIM_MS) {
+        if (reclaim && Date.now() - since < RECLAIM_MS) {
           // After a reload the server may still hold our old code for a while:
           // keep it, so the link friends already have keeps working.
-          if (!code) code = wanted;
-          call('onStatus', `Waiting for room code ${wanted}…`);
-          setTimeout(() => openHostPeer(popts, wanted, since, collisions, signalFails), RECLAIM_EVERY_MS);
+          if (!code) code = c;
+          call('onStatus', `Waiting for room code ${c}…`);
+          setTimeout(() => openHostPeer(c, reclaim, since, collisions, signalFails), RECLAIM_EVERY_MS);
         } else if (collisions < 5) {
-          if (wanted) call('onStatus', `Room code ${wanted} is still in use, so this room gets a new code`);
-          openHostPeer(popts, null, Date.now(), collisions + 1, signalFails);
+          if (reclaim) call('onStatus', `Room code ${c} is still in use, so this room gets a new code`);
+          openHostPeer(makeCode(), false, Date.now(), collisions + 1, signalFails);
         } else fail('Could not get a room code. Please try again.');
         return;
       }
+      // the PeerJS server is unreachable: the MQTT route may open the room meanwhile
+      if (tryMqttOpen()) { retryHostPeer(); return; }
       if (isSignalErr(err) && signalFails + 1 < SIGNAL_TRIES) {
         call('onStatus', 'Could not reach the online-room server — retrying…');
-        setTimeout(() => openHostPeer(popts, wanted, since, collisions, signalFails + 1), 1500 * (signalFails + 1));
+        setTimeout(() => {
+          if (hostOpened) { if (!hostPeer) retryHostPeer(); return; }
+          openHostPeer(c, reclaim, since, collisions, signalFails + 1);
+        }, 1500 * (signalFails + 1));
         return;
       }
-      fail(peerErrorText(err, c));
-    });
+      peerGaveUp = true;
+      hostFallback(peerErrorText(err, c));
+    }
   }
 
-  // Keep the host's registration with the room server alive (backoff), and
+  // The host's signaling can die without any event (PeerJS only notices a
+  // socket that closes): now and then, after a long hidden spell and when the
+  // network changes, register again on a fresh socket, and check the brokers.
+  function hostSignalRefresh() {
+    if (!hostOpened || stopped) return;
+    hostRefreshedAt = Date.now();
+    if (hostRdv && hostRdv.refresh) hostRdv.refresh();
+    const p = hostPeer;
+    if (!p || p.destroyed || p.disconnected || !peerUp || typeof p.disconnect !== 'function') return;
+    peerRefreshing = true;
+    try { p.disconnect(); } catch (e) { /* ignore */ }
+    hostRetryAt = 0;
+    hostSignalCheck(true);
+  }
+
+  // Keep the host's registration with the PeerJS server alive (backoff), and
   // retry at once when the tab comes back to the front.
   function hostSignalCheck(now) {
     const p = hostPeer;
@@ -521,72 +719,153 @@ export function createSession(opts, handlers) {
     try { p.reconnect(); } catch (e) { /* ignore */ }
   }
 
-  /* ---------- online, joiner: PeerJS data channel to the host ---------- */
+  /* ---------- online, joiner: race PeerJS and MQTT to the host ---------- */
 
+  // Each attempt dials over every available route at once. The first data
+  // channel that opens becomes the transport and the others are closed; the
+  // attempt fails only when every route has failed (or CONNECT_TIMEOUT_MS
+  // passed), and the message names the most telling failure: a network that
+  // blocks peer-to-peer > a host that does not answer > no such room > no
+  // signaling server reachable at all.
   function connectPeer() {
     const bad = codeProblem(code);
     if (bad) { fail(bad); return; }
     if (!hasWebRTC()) { fail(MSG.browser); return; }
-    let conn = null;
-    let stage = 'load'; // load -> signal (waiting for the room server) -> dial (waiting for the host)
-    let ice = 'new';
+    const routes = [];
+    let winner = null;
     const t = {
-      send(m) { try { if (conn && conn.open) conn.send(m); } catch (e) { /* ignore */ } },
-      close() { try { if (conn) conn.close(); } catch (e) { /* ignore */ } },
+      send(m) { try { if (winner && winner.conn.open) winner.conn.send(m); } catch (e) { /* ignore */ } },
+      close() { for (const r of routes) r.close(); },
     };
     transport = t;
-    // what went wrong if this attempt never opens
-    const failText = () => {
-      if (stage !== 'dial') return MSG.signal;
-      const st = (conn && conn.peerConnection && conn.peerConnection.iceConnectionState) || ice;
-      return st === 'new' ? MSG.noAnswer : MSG.ice;
-    };
-    const drop = (why) => { clearTimeout(timer); onDrop(t, why, failText()); };
+    const limit = connectTimeout();
+    const deadline = Date.now() + limit;
     const timer = setTimeout(() => {
-      if (transport !== t || connState === 'open') return;
-      drop(stage === 'dial' ? 'Could not reach the host' : 'Could not reach the online-room server');
-    }, CONNECT_TIMEOUT_MS);
+      if (transport !== t || winner) return;
+      for (const r of routes) if (!r.failed) { r.failed = { kind: r.diag() }; r.close(); }
+      settle();
+    }, limit);
+
+    function settle() {
+      if (transport !== t || winner || routes.some((r) => !r.failed)) return;
+      clearTimeout(timer);
+      const kinds = routes.map((r) => r.failed.kind);
+      const other = routes.find((r) => r.failed.kind === 'other');
+      if (kinds.includes('browser')) fail(MSG.browser);
+      else if (kinds.includes('ice')) onDrop(t, 'Could not connect to the host', MSG.ice);
+      else if (kinds.includes('noAnswer')) onDrop(t, 'Could not reach the host', MSG.noAnswer);
+      else if (kinds.includes('notFound')) {
+        if (!everOpen) { call('onError', MSG.notFound(code), true, { notFound: code }); stop(); } else onDrop(t, 'The host is away', MSG.notFound(code));
+      } else if (other) onDrop(t, other.failed.text, other.failed.text);
+      else onDrop(t, 'Could not reach the online-room server', MSG.signal);
+    }
+
+    // kind: 'signal' | 'notFound' | 'noAnswer' | 'ice' | 'browser' | 'other' (with text)
+    const route = (diag) => {
+      const r = { conn: null, failed: null, diag };
+      r.close = () => { try { if (r.conn) r.conn.close(); } catch (e) { /* ignore */ } };
+      r.lose = (kind, text) => {
+        if (r.failed || winner || transport !== t) return;
+        r.failed = { kind, text };
+        r.close();
+        // A definite answer (no such room, ICE failed) settles it for routes
+        // that have not even reached their server yet: a blackholed PeerJS
+        // server must not hold every attempt open until the timeout.
+        if (kind === 'notFound' || kind === 'ice') {
+          for (const x of routes) if (!x.failed && x.diag() === 'signal') { x.failed = { kind: 'signal' }; x.close(); }
+        }
+        settle();
+      };
+      r.wire = (c) => {
+        r.conn = c;
+        c.on('open', () => win(r));
+      };
+      routes.push(r);
+      return r;
+    };
+
+    function win(r) {
+      if (winner || transport !== t || r.failed || stopped) { if (winner !== r) r.close(); return; }
+      winner = r;
+      clearTimeout(timer);
+      for (const x of routes) if (x !== r) x.close();
+      const c = r.conn;
+      c.on('data', (d) => onMessage(t, d));
+      c.on('close', () => onDrop(t, 'Connection lost'));
+      c.on('error', (err) => { if (!(err && err.type === 'message-too-big')) onDrop(t, 'Connection lost'); });
+      onOpen(t);
+    }
+
+    if (usePeerJS()) dialPeerJS(route, t);
+    const rt = mqttRoute();
+    if (rt) {
+      const r = route(() => 'noAnswer');
+      iceServers().then((servers) => {
+        if (transport !== t || r.failed || winner) return;
+        const c = dialRendezvous({ code, ...rt, iceServers: servers, timeoutMs: Math.max(2000, deadline - Date.now() - 500) });
+        r.wire(c);
+        c.on('error', (err) => {
+          const type = err && err.type;
+          r.lose(type === 'signal' ? 'signal' : type === 'peer-unavailable' ? 'notFound' : type === 'browser-incompatible' ? 'browser' : 'ice');
+        });
+        c.on('close', () => { if (winner !== r) r.lose('ice'); });
+      });
+    }
+    if (!routes.length) settle();
+  }
+
+  // The PeerJS route of one attempt, with its own Peer (our registration with
+  // the PeerJS server). The Peer stays while its connection is in use; its
+  // errors go to the current attempt's route.
+  let peerAttempt = null;
+  function dialPeerJS(route, t) {
+    let stage = 'load'; // load -> signal (waiting for the room server) -> dial (waiting for the host)
+    let ice = 'new';
+    const r = route(() => {
+      if (stage !== 'dial') return 'signal';
+      const st = (r.conn && r.conn.peerConnection && r.conn.peerConnection.iceConnectionState) || ice;
+      return st === 'new' ? 'noAnswer' : 'ice';
+    });
+    peerAttempt = r;
     const dial = () => {
-      if (transport !== t) return;
+      if (transport !== t || r.failed) return;
       stage = 'dial';
-      try { conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' }); } catch (e) { drop('Could not reach the host'); return; }
-      if (!conn) { drop('Could not reach the host'); return; }
-      conn.on('open', () => { clearTimeout(timer); onOpen(t); });
-      conn.on('data', (d) => onMessage(t, d));
-      conn.on('iceStateChanged', (s) => { ice = s; });
-      conn.on('close', () => drop('Connection lost'));
-      conn.on('error', (err) => {
+      let c = null;
+      try { c = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' }); } catch (e) { c = null; }
+      if (!c) { r.lose(r.diag()); return; }
+      r.wire(c);
+      c.on('iceStateChanged', (s) => { ice = s; });
+      c.on('close', () => r.lose(r.diag()));
+      c.on('error', (err) => {
         if (err && err.type === 'message-too-big') return;
-        if (err && err.type === 'negotiation-failed' && connState !== 'open') ice = 'failed';
-        drop(connState === 'open' ? 'Connection lost' : 'Could not connect to the host');
+        if (err && err.type === 'negotiation-failed') ice = 'failed';
+        r.lose(r.diag());
       });
     };
     Promise.all([loadPeerJS(), peerOptions()]).then(([, popts]) => {
-      if (transport !== t) return;
+      if (transport !== t || r.failed) return;
       stage = 'signal';
-      if (peer && !peer.destroyed && !peer.disconnected && peer.open) { dial(); return; }
-      if (peer) { try { peer.destroy(); } catch (e) { /* ignore */ } }
+      // Always a fresh Peer: PeerJS never notices a signaling socket that died
+      // silently (VPN reconnect, cell handover), and every dial through it
+      // would time out, forever.
+      if (peer) { try { peer.destroy(); } catch (e) { /* ignore */ } peer = null; }
       let p;
-      try { p = new window.Peer(popts); } catch (e) { clearTimeout(timer); fail(MSG.browser); return; }
+      try { p = new window.Peer(popts); } catch (e) { r.lose('browser'); return; }
       peer = p;
       p.on('open', () => { if (peer === p) dial(); });
       p.on('error', (err) => {
-        if (peer !== p || stopped) return;
-        const tt = transport;
+        if (peer !== p || stopped || !peerAttempt) return;
         const type = err && err.type;
-        if (type === 'browser-incompatible') { clearTimeout(timer); fail(MSG.browser); return; }
-        if (type === 'peer-unavailable') {
-          if (!everOpen) { clearTimeout(timer); call('onError', MSG.notFound(code), true, { notFound: code }); stop(); return; }
-          if (tt) { clearTimeout(timer); onDrop(tt, 'The host is away'); }
-          return;
-        }
-        // Losing the room server does not break an open data channel: keep
-        // playing; a new Peer is made if we ever need to reconnect.
-        if (isSignalErr(err) && tt && connState === 'open') return;
-        if (tt) { clearTimeout(timer); onDrop(tt, isSignalErr(err) ? 'Could not reach the online-room server' : peerErrorText(err, code), peerErrorText(err, code)); }
+        // Losing the room server does not break an open data channel (lose()
+        // ignores routes once a winner is chosen); a new Peer is made if we
+        // ever need to reconnect.
+        if (type === 'browser-incompatible') peerAttempt.lose('browser');
+        else if (type === 'peer-unavailable') peerAttempt.lose('notFound');
+        else if (isSignalErr(err)) peerAttempt.lose('signal');
+        else peerAttempt.lose('other', peerErrorText(err, code));
       });
       p.on('disconnected', () => { /* data channels survive; see above */ });
-    }, (e) => { clearTimeout(timer); fail(e.message); });
+    }, (e) => r.lose('other', e.message));
   }
 
   /* ---------- lifecycle ---------- */
@@ -597,16 +876,23 @@ export function createSession(opts, handlers) {
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
     if (tickTimer) { clearTimeout(tickTimer); tickTimer = null; }
     try { document.removeEventListener('visibilitychange', onVisible); } catch (e) { /* ignore */ }
+    listenNet(false);
     const t = transport;
     transport = null;
     if (t) { try { t.close(); } catch (e) { /* ignore */ } }
     if (room) { try { room.destroy(); } catch (e) { /* ignore */ } room = null; }
+    // tell the guests at once (a closed tab would too), rather than after their timeout
+    if (hostConns) { for (const c of hostConns.values()) { try { c.close(); } catch (e) { /* ignore */ } } hostConns.clear(); }
     if (hostPeer) { try { hostPeer.destroy(); } catch (e) { /* ignore */ } hostPeer = null; }
+    if (hostRdv) { hostRdv.close(); hostRdv = null; }
+    if (peerRetryTimer) { clearTimeout(peerRetryTimer); peerRetryTimer = null; }
+    if (mqttWait) { clearTimeout(mqttWait); mqttWait = null; }
     if (peer) { try { peer.destroy(); } catch (e) { /* ignore */ } peer = null; }
     setConn('closed');
   }
 
   try { document.addEventListener('visibilitychange', onVisible); } catch (e) { /* ignore */ }
+  listenNet(true);
   tickTimer = setTimeout(tick, TICK_MS);
   connect();
 
@@ -632,6 +918,8 @@ export function createSession(opts, handlers) {
     voteCpu(seat) { send({ t: 'vote-cpu', seat }); },
     // you touched the screen while your mascot sleeps
     wake() { send({ t: 'wake' }); },
+    // reconnect at once instead of waiting for the next try; false when not reconnecting
+    retryNow() { return retryNow(); },
     close() { stop(); },
   };
 }
