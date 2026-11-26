@@ -956,6 +956,11 @@ summary { cursor: pointer; font-weight: 600; }
    always facing you (no mirror flip), with a little side-to-side tilt in its step */
 .ani { transition: translate 1.6s ease-in-out; }
 .ani.walk .bd { animation: ani-step .4s ease-in-out 4 alternate; }
+/* the others watch the stroller (ui.js watchStroller): the eyes shift toward it
+   (--lx/--ly, in the mascot's own 64-unit drawing) and the head tilts that way */
+.ani .bd, .ani .an .eo { transition: transform .35s var(--ease-out); }
+.watch .an .eo { transform: translate(var(--lx), var(--ly)); }
+.watch .bd { transform: rotate(var(--tilt)); }
 @keyframes ani-step { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-9%) rotate(4deg); } }
 .sleep .an .eo { transform: scaleY(.14); }
 .sleep .an .eo circle[fill="#fff"] { display: none; }

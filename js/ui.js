@@ -355,8 +355,22 @@ export function emoteHTML(kind, text = EMOTE_TEXT[kind]) {
 }
 // Show an emote on a mascot box (.ani on the table, .mav in the lobby) for EMOTE_MS:
 // classes .emo .emo-<kind> drive the face and moves, plus effects and a bubble.
+// a mascot looking toward the stroller (direction 0..7, counted from screen-right,
+// clockwise in 45° steps) or straight ahead (null): the eyes shift that way and the
+// head tilts toward that side
+function setWatch(el, w) {
+  el._watch = w ?? null;
+  if (w == null) { el.classList.remove('watch'); return; }
+  const a = w * Math.PI / 4, dx = Math.cos(a), dy = Math.sin(a);
+  el.style.setProperty('--lx', `${(dx * 1.8).toFixed(2)}px`);
+  el.style.setProperty('--ly', `${(dy * 1.5).toFixed(2)}px`);
+  el.style.setProperty('--tilt', `${Math.abs(dx) < 0.2 ? 0 : Math.sign(dx) * 7}deg`);
+  el.classList.add('watch');
+}
+
 export function playEmoteOn(el, kind, text) {
   if (!el || !el.firstChild || !EMOTE_TEXT[kind] || el.classList.contains('gone') || el.classList.contains('sleep')) return;
+  clearTimeout(el._watchT); el._watchT = null; setWatch(el, null); // the emote's own face wins
   clearTimeout(el._emoT);
   for (const x of el.querySelectorAll('.emo-fx, .bub')) x.remove();
   el.classList.remove('emo');
@@ -542,7 +556,7 @@ export class Table {
     clearTimeout(this.idleTimer);
     clearTimeout(this.idleEnd);
     clearInterval(this.walkTimer);
-    for (const el of this.anis) { clearTimeout(el._emoT); clearTimeout(el._walkT); }
+    for (const el of this.anis) { clearTimeout(el._emoT); clearTimeout(el._walkT); clearTimeout(el._watchT); }
     if (this.celeb) for (const t of this.celeb.timers) clearTimeout(t);
     this.celeb = null;
     this.idleTimer = this.idleEnd = null;
@@ -633,10 +647,10 @@ export class Table {
       const m = 3; // keep a little gap
       return obstacles.list.some((o) => rect.left < o.right + m && rect.right > o.left - m && rect.top < o.bottom + m && rect.bottom > o.top - m);
     };
+    // only the mascot of the player whose turn it is strolls (after WANDER_MS of
+    // them doing nothing); everyone else stays home
+    const turn = this.v && this.v.phase === 'discard' ? (this.v.turn - this.v.seat + 4) % 4 : -1;
     this.anis.forEach((el, r) => {
-      // only the mascot of the player whose turn it is strolls (after WANDER_MS of
-      // them doing nothing); everyone else stays home
-      const turn = this.v && this.v.phase === 'discard' ? (this.v.turn - this.v.seat + 4) % 4 : -1;
       const busy = !el.firstChild || el._away || el._emo || this.celeb || reduceMotion.matches || r !== turn;
       if (busy) { if ((el._dx || el._dy) && !el._emo) this.walkTo(r, 0, 0); return; }
       const cx = el._dx || 0, cy = el._dy || 0;
@@ -663,6 +677,31 @@ export class Table {
         if (ok) { this.walkTo(r, dx, dy); return; }
       }
       if (cx || cy) this.walkTo(r, 0, 0); // no free spot right now
+    });
+    this.watchStroller(turn);
+  }
+
+  // While a mascot is out for a stroll, the others watch it: their eyes (and a little
+  // head tilt) follow it left or right, each turning at its own moment; when it is
+  // back home they look ahead again.
+  watchStroller(turn) {
+    const walker = turn >= 0 && (this.anis[turn]._dx || this.anis[turn]._dy) ? this.anis[turn] : null;
+    const wb = walker && walker.getBoundingClientRect();
+    this.anis.forEach((el) => {
+      let want = null;
+      if (wb && el !== walker && el.firstChild && !el._away && !el._emo && !this.celeb && !reduceMotion.matches) {
+        const b = el.getBoundingClientRect();
+        // which way the stroller is, in 8 directions (so small steps don't re-trigger)
+        const a = Math.atan2(wb.top + wb.height / 2 - (b.top + b.height / 2), wb.left + wb.width / 2 - (b.left + b.width / 2));
+        want = (Math.round(a / (Math.PI / 4)) + 8) % 8;
+      }
+      if (want === (el._watch ?? null)) { clearTimeout(el._watchT); el._watchT = null; return; }
+      if (el._watchT) return;
+      el._watchT = setTimeout(() => {
+        el._watchT = null;
+        if (el._emo && want) return; // an emote took over meanwhile
+        setWatch(el, want);
+      }, want ? 150 + Math.random() * 700 : 250 + Math.random() * 600);
     });
   }
 
