@@ -634,7 +634,10 @@ export class Table {
       return obstacles.list.some((o) => rect.left < o.right + m && rect.right > o.left - m && rect.top < o.bottom + m && rect.bottom > o.top - m);
     };
     this.anis.forEach((el, r) => {
-      const busy = !el.firstChild || el._away || el._emo || this.celeb || reduceMotion.matches;
+      // only the mascot of the player whose turn it is strolls (after WANDER_MS of
+      // them doing nothing); everyone else stays home
+      const turn = this.v && this.v.phase === 'discard' ? (this.v.turn - this.v.seat + 4) % 4 : -1;
+      const busy = !el.firstChild || el._away || el._emo || this.celeb || reduceMotion.matches || r !== turn;
       if (busy) { if ((el._dx || el._dy) && !el._emo) this.walkTo(r, 0, 0); return; }
       const cx = el._dx || 0, cy = el._dy || 0;
       const box = el.getBoundingClientRect();

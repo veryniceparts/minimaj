@@ -19,8 +19,9 @@ for them: they get their seat back by opening the link again, or just by
 reloading the page. If they don't come back, the others can vote (a majority)
 to let a computer play their seat. Someone the table has waited on for 45
 seconds falls asleep too: only their mascot sleeps (nobody plays for them), and
-a touch wakes it. Mascots whose player has done nothing for 7 seconds stroll
-around their corner of the table, and walk home when that player plays.
+a touch wakes it. When it is someone's turn and they have done nothing for 7
+seconds, their mascot strolls around its corner of the table; it walks home
+when they play. The other mascots stay put.
 
 ## Download
 
